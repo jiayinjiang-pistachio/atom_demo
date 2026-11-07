@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 from collections.abc import AsyncIterator, Sequence
 from dataclasses import dataclass
@@ -199,6 +200,63 @@ async def test_sse_replay_contains_terminal_event(client: AsyncClient, flow: Flo
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("text/event-stream")
     assert "event: preview.ready" in response.text
+    assert '"status":"succeeded"' in response.text
+
+
+async def test_sse_pushes_events_committed_while_streaming(
+    client: AsyncClient, flow: FlowContext
+) -> None:
+    live_run = Run(
+        id=new_ulid(),
+        project_id=flow.project_id,
+        user_message_id=None,
+        status="queued",
+    )
+    async with SessionFactory() as session:
+        session.add(live_run)
+        await session.commit()
+
+    streaming = asyncio.create_task(
+        client.get(
+            f"/api/v1/runs/{live_run.id}/events?after_seq=0",
+            headers={"Authorization": f"Bearer {flow.token}"},
+        )
+    )
+    await asyncio.sleep(0.4)
+
+    async with SessionFactory() as session:
+        session.add_all(
+            [
+                RunEvent(
+                    run_id=live_run.id,
+                    seq=1,
+                    type="assistant.delta",
+                    payload={"text": "实时输出"},
+                ),
+                RunEvent(
+                    run_id=live_run.id,
+                    seq=2,
+                    type="file.updated",
+                    payload={"path": "index.html", "size": 10, "deleted": False},
+                ),
+                RunEvent(
+                    run_id=live_run.id,
+                    seq=3,
+                    type="run.status",
+                    payload={"status": "succeeded"},
+                ),
+            ]
+        )
+        stored = await session.get(Run, live_run.id)
+        assert stored is not None
+        stored.status = "succeeded"
+        await session.commit()
+
+    response = await asyncio.wait_for(streaming, timeout=5.0)
+
+    assert response.status_code == 200
+    assert "event: assistant.delta" in response.text
+    assert "event: file.updated" in response.text
     assert '"status":"succeeded"' in response.text
 
 

@@ -59,6 +59,10 @@ async def stream_events(
     last_event_id: Annotated[str | None, Header(alias="Last-Event-ID")] = None,
 ) -> StreamingResponse:
     await run_service.get_owned_run(session, run_id, guest.id)
+    # End the auth read transaction before streaming. MySQL defaults to
+    # REPEATABLE READ, so a long-lived session would otherwise keep reading the
+    # snapshot taken here and never observe events committed by the agent.
+    await session.commit()
 
     cursor = _parse_cursor(last_event_id, after_seq)
 
@@ -88,6 +92,9 @@ async def stream_events(
             else:
                 terminal_wait = 0.0
 
+            # Commit after every poll: releases the connection and starts a new
+            # transaction, so the next SELECT sees newly committed events.
+            await session.commit()
             await asyncio.sleep(0.25)
 
             now = time.monotonic()
