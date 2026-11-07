@@ -1,30 +1,41 @@
 <script setup lang="ts">
-import { ArrowLeft, Clock3, LoaderCircle, RefreshCw, Sparkles } from 'lucide-vue-next'
+import { ArrowLeft, LoaderCircle, RefreshCw } from 'lucide-vue-next'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 
+import type { ShareCreatePayload } from '@/api/types'
 import AgentChat from '@/components/workspace/AgentChat.vue'
-import FilePanel from '@/components/workspace/FilePanel.vue'
+import DiffDialog from '@/components/workspace/DiffDialog.vue'
 import PreviewPanel from '@/components/workspace/PreviewPanel.vue'
+import ShareDialog from '@/components/workspace/ShareDialog.vue'
+import WorkspaceSidebar from '@/components/workspace/WorkspaceSidebar.vue'
+import WorkspaceToolbar from '@/components/workspace/WorkspaceToolbar.vue'
 import { useProjectsStore } from '@/stores/projects'
+import { useSharesStore } from '@/stores/shares'
+import { useVersionsStore } from '@/stores/versions'
 import { useWorkspaceStore } from '@/stores/workspace'
 
 const route = useRoute()
 const projects = useProjectsStore()
 const workspace = useWorkspaceStore()
+const versions = useVersionsStore()
+const shares = useSharesStore()
+
 const projectId = computed(() => String(route.params.id ?? ''))
 const project = computed(() => projects.current)
 const selectedPath = ref<string | null>(null)
+const restoringNumber = ref<number | null>(null)
+const diffOpen = ref(false)
+const diffRange = ref<{ from: number; to: number } | null>(null)
+const shareOpen = ref(false)
 
-const updatedLabel = computed(() => {
-  if (!project.value) {
-    return ''
-  }
-  return new Intl.DateTimeFormat('zh-CN', {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-  }).format(new Date(project.value.updated_at))
-})
+const updatedLabel = computed(() =>
+  project.value
+    ? new Intl.DateTimeFormat('zh-CN', { dateStyle: 'medium', timeStyle: 'short' }).format(
+        new Date(project.value.updated_at),
+      )
+    : '',
+)
 
 const filePaths = computed(() => (project.value?.files ?? []).map((file) => file.path).join('|'))
 
@@ -37,6 +48,7 @@ async function load(): Promise<void> {
   if (loaded && loaded.id === projectId.value) {
     workspace.init(loaded)
     syncSelectedFile()
+    await versions.load(projectId.value)
   }
 }
 
@@ -54,23 +66,108 @@ function syncSelectedFile(): void {
 }
 
 async function handleStart(): Promise<void> {
-  if (!project.value) {
-    return
+  if (project.value) {
+    await handleSend(project.value.prompt)
   }
-  await workspace.start(project.value.prompt, project.value.id)
 }
 
 async function handleSend(message: string): Promise<void> {
+  if (project.value) {
+    await workspace.start(message, project.value.id)
+  }
+}
+
+async function handleRestore(number: number): Promise<void> {
   if (!project.value) {
     return
   }
-  await workspace.start(message, project.value.id)
+  const confirmed = window.confirm(
+    `回滚到 v${number}？这会创建一个 source=restore 的新版本，历史版本保持不变。`,
+  )
+  if (!confirmed) {
+    return
+  }
+  restoringNumber.value = number
+  try {
+    const version = await versions.restore(project.value.id, number)
+    if (version) {
+      workspace.setPreviewVersion(version.number)
+    }
+  } finally {
+    restoringNumber.value = null
+  }
 }
 
-watch(projectId, () => void load())
+async function handleExport(number?: number): Promise<void> {
+  if (!project.value) {
+    return
+  }
+  await versions.exportVersion(project.value.id, number)
+}
+
+function openDiff(fromVersion: number, toVersion: number): void {
+  diffRange.value = { from: fromVersion, to: toVersion }
+  diffOpen.value = true
+  if (project.value) {
+    void versions.loadDiff(project.value.id, fromVersion, toVersion)
+  }
+}
+
+function retryDiff(): void {
+  if (!project.value || !diffRange.value) {
+    return
+  }
+  void versions.loadDiff(project.value.id, diffRange.value.from, diffRange.value.to)
+}
+
+function closeDiff(): void {
+  diffOpen.value = false
+  diffRange.value = null
+  versions.clearDiff()
+}
+
+async function openShare(): Promise<void> {
+  if (!project.value) {
+    return
+  }
+  shareOpen.value = true
+  await shares.load(project.value.id)
+}
+
+async function refreshShares(): Promise<void> {
+  if (project.value) await shares.load(project.value.id)
+}
+
+async function handleCreateShare(payload: ShareCreatePayload): Promise<void> {
+  if (project.value) {
+    await shares.create(project.value.id, payload)
+  }
+}
+
+async function handleRevokeShare(slug: string): Promise<void> {
+  if (project.value) {
+    await shares.revoke(project.value.id, slug)
+  }
+}
+
+function refreshVersions(): void {
+  if (project.value) {
+    void versions.load(project.value.id)
+  }
+}
+
+watch(projectId, () => {
+  versions.reset()
+  shares.reset()
+  void load()
+})
 watch(filePaths, syncSelectedFile)
 onMounted(() => void load())
-onBeforeUnmount(() => workspace.reset())
+onBeforeUnmount(() => {
+  workspace.reset()
+  versions.reset()
+  shares.reset()
+})
 </script>
 
 <template>
@@ -120,50 +217,34 @@ onBeforeUnmount(() => workspace.reset())
     </div>
 
     <template v-else>
-      <header class="mt-6 flex flex-wrap items-start justify-between gap-4">
-        <div class="min-w-0">
-          <div class="flex flex-wrap items-center gap-2">
-            <h1 class="truncate text-2xl font-semibold tracking-tight text-slate-900 dark:text-white">
-              {{ project.title }}
-            </h1>
-            <span
-              v-if="project.current_version !== null"
-              class="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-300"
-            >
-              v{{ project.current_version }}
-            </span>
-          </div>
-          <p class="mt-2 flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
-            <Clock3 class="size-3.5" />
-            更新于 {{ updatedLabel }}
-          </p>
-        </div>
-      </header>
-
-      <section
-        class="mt-6 rounded-2xl border border-indigo-200 bg-indigo-50/60 p-4 dark:border-indigo-500/30 dark:bg-indigo-500/10"
-      >
-        <div class="flex items-start gap-2">
-          <Sparkles class="mt-0.5 size-4 shrink-0 text-indigo-600 dark:text-indigo-400" />
-          <div>
-            <p class="text-xs font-medium text-indigo-700 dark:text-indigo-300">应用描述</p>
-            <p class="mt-1 text-sm leading-6 text-slate-700 dark:text-slate-300">
-              {{ project.prompt }}
-            </p>
-          </div>
-        </div>
-      </section>
+      <WorkspaceToolbar
+        :title="project.title"
+        :prompt="project.prompt"
+        :version="project.current_version"
+        :updated-label="updatedLabel"
+        :exporting="versions.exporting"
+        @export="handleExport()"
+        @share="openShare"
+      />
 
       <div
-        class="mt-5 grid gap-4 lg:h-[calc(100vh-18rem)] lg:min-h-140 lg:grid-cols-[240px_minmax(0,1fr)_minmax(0,1.05fr)]"
+        class="mt-5 grid gap-4 lg:h-[calc(100vh-18rem)] lg:min-h-140 lg:grid-cols-[260px_minmax(0,1fr)_minmax(0,1.05fr)]"
       >
-        <div class="min-h-105 lg:min-h-0">
-          <FilePanel
-            :files="project.files"
-            :selected-path="selectedPath"
-            @select="selectedPath = $event"
-          />
-        </div>
+        <WorkspaceSidebar
+          :files="project.files"
+          :selected-path="selectedPath"
+          :versions="versions.items"
+          :versions-loading="versions.loading"
+          :version-error="versions.error"
+          :restoring-number="restoringNumber"
+          :exporting="versions.exporting"
+          @select="selectedPath = $event"
+          @refresh-versions="refreshVersions"
+          @diff="openDiff"
+          @restore="handleRestore"
+          @export="handleExport"
+        />
+
         <div class="min-h-115 lg:min-h-0">
           <AgentChat
             :messages="project.messages"
@@ -193,5 +274,29 @@ onBeforeUnmount(() => workspace.reset())
         </div>
       </div>
     </template>
+
+    <DiffDialog
+      :open="diffOpen"
+      :diff="versions.diff"
+      :loading="versions.diffLoading"
+      :error="versions.error"
+      @close="closeDiff"
+      @retry="retryDiff"
+    />
+
+    <ShareDialog
+      :open="shareOpen"
+      :current-version="project?.current_version ?? null"
+      :versions="versions.items"
+      :shares="shares.items"
+      :loading="shares.loading"
+      :creating="shares.creating"
+      :revoking="shares.revoking"
+      :error="shares.error"
+      @close="shareOpen = false"
+      @refresh="refreshShares"
+      @create="handleCreateShare"
+      @revoke="handleRevokeShare"
+    />
   </main>
 </template>

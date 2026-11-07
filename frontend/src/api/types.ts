@@ -84,3 +84,60 @@ export interface ProjectUpdatePayload {
 export interface RunCreatePayload {
   message: string
 }
+
+export interface VersionSummary {
+  number: number
+  label: string
+  source: string
+  created_at: string
+  file_count: number
+  total_bytes: number
+  is_current: boolean
+}
+
+export type VersionChangeKind = 'added' | 'removed' | 'modified'
+
+export interface VersionDiffFile {
+  path: string
+  change: VersionChangeKind
+  additions: number
+  deletions: number
+  diff: string
+}
+
+export interface VersionDiffSummary {
+  files_added: number
+  files_removed: number
+  files_modified: number
+  additions: number
+  deletions: number
+}
+
+export interface VersionDiff {
+  from_version: number
+  to_version: number
+  files: VersionDiffFile[]
+  summary: VersionDiffSummary
+}
+
+export interface ShareSummary {
+  slug: string
+  version: number
+  created_at: string
+  expires_at: string | null
+  revoked: boolean
+}
+
+export interface ShareCreatePayload {
+  version?: number | null
+  expires_in_days: 7 | 30 | null
+}
+
+export interface PublicShare {
+  slug: string
+  title: string
+  version: number
+  entry: string
+  created_at: string
+  expires_at: string | null
+}

@@ -24,7 +24,7 @@ const themeStore = useThemeStore()
             <span
               class="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-500 dark:bg-slate-800 dark:text-slate-400"
             >
-              M2
+              M3
             </span>
           </span>
         </RouterLink>
@@ -47,7 +47,7 @@ const themeStore = useThemeStore()
       <div
         class="mx-auto flex w-full max-w-6xl flex-col gap-2 px-6 text-xs text-slate-500 sm:flex-row sm:items-center sm:justify-between dark:text-slate-400"
       >
-        <span>Atom Demo · M2 Agent 生成与实时预览</span>
+        <span>Atom Demo · M3 版本、导出与只读分享</span>
         <span>Vue 3 / FastAPI / MySQL · 方案见 docs/tech-plan.md</span>
       </div>
     </footer>

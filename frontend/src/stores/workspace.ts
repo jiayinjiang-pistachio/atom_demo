@@ -192,6 +192,10 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     }
   }
 
+  function setPreviewVersion(version: number | null): void {
+    previewVersion.value = version
+  }
+
   function scheduleRefresh(delayMs: number): void {
     if (refreshTimer !== null) {
       globalThis.clearTimeout(refreshTimer)
@@ -241,6 +245,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     init,
     start,
     cancel,
+    setPreviewVersion,
     reset,
   }
 })
