@@ -4,7 +4,7 @@
 
 ## 1. 技术栈（不要替换）
 
-Python 3.12 + FastAPI + Pydantic v2 + SQLAlchemy 2.0 async + asyncmy + Alembic + httpx + tenacity + structlog + pytest。
+Python 3.13 + FastAPI + Pydantic v2 + SQLAlchemy 2.0 async + asyncmy + Alembic + httpx + tenacity + structlog + pytest。
 包管理固定使用 `uv`；MySQL 8.0。
 LLM：DeepSeek OpenAI 兼容 API，主模型 `deepseek-chat`。
 

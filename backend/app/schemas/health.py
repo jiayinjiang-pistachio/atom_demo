@@ -1,0 +1,15 @@
+from typing import Literal
+
+from pydantic import BaseModel
+
+
+class HealthResponse(BaseModel):
+    status: Literal["ok", "degraded"]
+    database: Literal["ok", "down"]
+    version: str
+
+
+class MetaResponse(BaseModel):
+    name: str
+    environment: str
+    api_version: str
