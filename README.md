@@ -69,7 +69,7 @@ docker compose up -d
 - `preview.<domain>`：仅 `/preview/*` 与 `/share-preview/*` 提供生成应用的隔离预览
 - MySQL 只绑定本机，不暴露公网
 
-服务器更新：`./deploy/deploy.sh`。
+服务器更新：`./deploy/deploy.sh`。脚本会重建镜像、启动服务并 reload Caddy，避免仅更新 bind mount 的 `Caddyfile` 后旧路由继续生效。
 
 ## 生成流程
 
