@@ -12,6 +12,7 @@ from httpx import AsyncClient
 from sqlalchemy import delete, select
 
 from app.agent.orchestrator import execute_run
+from app.agent.tools import AgentTools
 from app.core.ids import new_ulid
 from app.db.models import Guest, Message, Project, ProjectVersion, Run, RunEvent
 from app.db.session import SessionFactory
@@ -300,6 +301,14 @@ async def test_repeated_writes_are_finalized_instead_of_hitting_step_limit(
         async with SessionFactory() as session:
             await session.execute(delete(Guest).where(Guest.id == guest_id))
             await session.commit()
+def test_finish_keeps_full_summary() -> None:
+    summary = "已生成完整应用。" + "功能说明。" * 120
+    assert len(summary) > 500
+
+    outcome = AgentTools._finish({"summary": summary})
+
+    assert outcome.finished is True
+    assert outcome.summary == summary
 
 
 async def test_agent_flow_persists_files_and_version(flow: FlowContext) -> None:

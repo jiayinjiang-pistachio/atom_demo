@@ -255,7 +255,7 @@ class AgentTools:
         summary = str(arguments.get("summary") or "").strip()
         if not summary:
             summary = "本次生成已完成。"
-        return ToolOutcome(json.dumps({"ok": True}), finished=True, summary=summary[:500])
+        return ToolOutcome(json.dumps({"ok": True}), finished=True, summary=summary)
 
 
 def file_manifest(files: list[ProjectFile]) -> str:
