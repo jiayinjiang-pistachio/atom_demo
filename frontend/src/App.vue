@@ -1,15 +1,19 @@
 <script setup lang="ts">
 import { Moon, Sparkles, Sun } from 'lucide-vue-next'
-import { RouterLink, RouterView } from 'vue-router'
+import { computed } from 'vue'
+import { RouterLink, RouterView, useRoute } from 'vue-router'
 
 import { useThemeStore } from '@/stores/theme'
 
+const route = useRoute()
 const themeStore = useThemeStore()
+const isShare = computed(() => route.name === 'share')
 </script>
 
 <template>
   <div class="flex min-h-screen flex-col">
     <header
+      v-if="!isShare"
       class="sticky top-0 z-20 border-b border-slate-200/70 bg-white/80 backdrop-blur dark:border-slate-800/70 dark:bg-slate-950/80"
     >
       <div class="mx-auto flex h-16 w-full max-w-6xl items-center justify-between px-6">
@@ -43,7 +47,7 @@ const themeStore = useThemeStore()
 
     <RouterView class="flex-1" />
 
-    <footer class="border-t border-slate-200/70 py-6 dark:border-slate-800/70">
+    <footer v-if="!isShare" class="border-t border-slate-200/70 py-6 dark:border-slate-800/70">
       <div
         class="mx-auto flex w-full max-w-6xl flex-col gap-2 px-6 text-xs text-slate-500 sm:flex-row sm:items-center sm:justify-between dark:text-slate-400"
       >

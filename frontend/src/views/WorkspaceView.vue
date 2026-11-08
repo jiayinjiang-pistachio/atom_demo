@@ -131,7 +131,7 @@ async function openShare(): Promise<void> {
     return
   }
   shareOpen.value = true
-  await shares.load(project.value.id)
+  await Promise.all([shares.load(project.value.id), versions.load(project.value.id)])
 }
 
 async function refreshShares(): Promise<void> {
@@ -162,6 +162,14 @@ watch(projectId, () => {
   void load()
 })
 watch(filePaths, syncSelectedFile)
+watch(
+  () => project.value?.current_version,
+  (version, previous) => {
+    if (project.value && version !== previous && !versions.loading) {
+      void versions.load(project.value.id)
+    }
+  },
+)
 onMounted(() => void load())
 onBeforeUnmount(() => {
   workspace.reset()
