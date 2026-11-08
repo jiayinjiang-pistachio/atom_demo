@@ -112,6 +112,29 @@ class TruncatingProvider(ScriptedProvider):
             yield chunk
 
 
+class RewritingProvider:
+    """Writes a valid app once, then keeps rewriting app.js with identical content."""
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    async def stream_chat(
+        self,
+        *,
+        messages: Sequence[dict[str, Any]],
+        tools: Sequence[dict[str, Any]],
+        max_tokens: int,
+    ) -> AsyncIterator[StreamChunk]:
+        self.calls += 1
+        if self.calls == 1:
+            yield _write_turn("call-html", "index.html", _HTML)
+            return
+        if self.calls == 2:
+            yield _write_turn("call-css", "styles.css", _CSS)
+            return
+        yield _write_turn(f"call-js-{self.calls}", "app.js", _JS)
+
+
 def _write_turn(call_id: str, path: str, content: str) -> StreamChunk:
     return StreamChunk(
         tool_calls=[
@@ -218,6 +241,61 @@ async def test_output_truncation_retries_with_smaller_files(
         assert provider.saw_nudge is True
         assert stored is not None and stored.status == "succeeded"
         assert stored_project is not None and stored_project.current_version == 1
+    finally:
+        async with SessionFactory() as session:
+            await session.execute(delete(Guest).where(Guest.id == guest_id))
+            await session.commit()
+
+
+async def test_repeated_writes_are_finalized_instead_of_hitting_step_limit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    available, reason = await _database_available()
+    if not available:
+        pytest.skip(f"MySQL is not available; integration tests need the real database ({reason})")
+
+    async with SessionFactory() as session:
+        _token, guest = await create_guest(session)
+        project = await create_project(session, guest.id, "做一个任务看板", "测试看板")
+        user_message = Message(project_id=project.id, role="user", content="做一个任务看板")
+        session.add(user_message)
+        await session.flush()
+        run = Run(
+            id=new_ulid(),
+            project_id=project.id,
+            user_message_id=user_message.id,
+            status="queued",
+        )
+        session.add(run)
+        await session.commit()
+        run_id = run.id
+        project_id = project.id
+        guest_id = guest.id
+
+    monkeypatch.setattr("app.agent.orchestrator.resolve_mode", lambda: "live")
+    provider = RewritingProvider()
+    await execute_run(run_id, gateway=LLMGateway(provider))
+
+    try:
+        async with SessionFactory() as session:
+            stored = await session.get(Run, run_id)
+            stored_project = await session.get(Project, project_id)
+            events = (
+                (await session.execute(select(RunEvent).where(RunEvent.run_id == run_id)))
+                .scalars()
+                .all()
+            )
+
+        assert stored is not None and stored.status == "succeeded"
+        assert stored_project is not None and stored_project.current_version == 1
+        assert provider.calls < 24
+        updated = [event for event in events if event.type == "file.updated"]
+        assert len(updated) == 3
+        assert {event.payload["path"] for event in updated} == {
+            "index.html",
+            "styles.css",
+            "app.js",
+        }
     finally:
         async with SessionFactory() as session:
             await session.execute(delete(Guest).where(Guest.id == guest_id))

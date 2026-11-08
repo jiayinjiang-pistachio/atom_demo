@@ -113,6 +113,8 @@ class ToolOutcome:
     content: str
     finished: bool = False
     summary: str | None = None
+    path: str | None = None
+    changed: bool = False
 
 
 def _summarize_arguments(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
@@ -211,17 +213,27 @@ class AgentTools:
             raise AppError(422, "invalid_content", "content 必须是字符串")
         path, old_content = await vfs.write_file(self._session, self._project_id, raw_path, content)
         size = len(content.encode("utf-8"))
+        changed = old_content != content
+        # Always release the write transaction before the next model call.
         await self._session.commit()
-        await self._emitter.emit(
-            "file.updated",
-            {
-                "path": path,
-                "size": size,
-                "diff": vfs.unified_diff(old_content, content, path),
-                "deleted": False,
-            },
+        if changed:
+            await self._emitter.emit(
+                "file.updated",
+                {
+                    "path": path,
+                    "size": size,
+                    "diff": vfs.unified_diff(old_content, content, path),
+                    "deleted": False,
+                },
+            )
+        return ToolOutcome(
+            json.dumps(
+                {"ok": True, "path": path, "size": size, "unchanged": not changed},
+                ensure_ascii=False,
+            ),
+            path=path,
+            changed=changed,
         )
-        return ToolOutcome(json.dumps({"ok": True, "path": path, "size": size}))
 
     async def _delete_file(self, arguments: dict[str, Any]) -> ToolOutcome:
         path = vfs.validate_path(str(arguments.get("path") or ""))
@@ -232,7 +244,11 @@ class AgentTools:
             return ToolOutcome(json.dumps({"error": f"文件不存在：{path}"}, ensure_ascii=False))
         await self._session.commit()
         await self._emitter.emit("file.updated", {"path": path, "deleted": True})
-        return ToolOutcome(json.dumps({"ok": True, "deleted": path}))
+        return ToolOutcome(
+            json.dumps({"ok": True, "deleted": path}, ensure_ascii=False),
+            path=path,
+            changed=True,
+        )
 
     @staticmethod
     def _finish(arguments: dict[str, Any]) -> ToolOutcome:

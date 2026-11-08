@@ -33,9 +33,23 @@ logger = structlog.get_logger()
 _MAX_TRUNCATION_RETRIES = 2
 _TRUNCATION_NUDGE = (
     "上一条输出因长度限制被截断。请缩小单次输出："
-    "把大文件拆成多个文件（如 index.html + styles.css + app.js），"
-    "单次 write_file 内容控制在约 6000 字符以内；先写骨架，再分步补充。"
+    "把大文件拆成更多独立文件（如 index.html + styles.css + app.js + data.js），"
+    "单次 write_file 内容控制在约 6KB 以内。"
+    "不要用 write_file 反复覆盖同一文件，也不要在写入后再读取自己刚写的文件。"
     "不要输出与工具调用无关的长文本。"
+)
+
+_STALL_NUDGE_AFTER = 2
+_MAX_STALLED_STEPS = 4
+_WRITE_NUDGE_THRESHOLD = 4
+_MAX_WRITES_PER_PATH = 6
+_LOOP_NUDGE = (
+    "已检测到重复修改：同一文件被多次完整覆盖，或连续多步没有产生新的文件变化。"
+    "当前文件内容已经可用，请停止重复写入，立即调用 finish 结束本次生成。"
+)
+_BUDGET_NUDGE = (
+    "工具步数即将用完。请立即完成当前正在写的文件，"
+    "不要再读取或重写已经完成的文件，并马上调用 finish 结束本次生成。"
 )
 
 
@@ -181,10 +195,18 @@ async def _run_agent(
     tokens_in = 0
     tokens_out = 0
     truncation_retries = 0
+    write_counts: dict[str, int] = {}
+    stalled_steps = 0
+    loop_nudged = False
+    budget_nudged = False
 
     for _step in range(settings.max_steps):
         if await _is_cancelled(session, run):
             raise RunCancelled
+
+        if settings.max_steps - _step <= 3 and not budget_nudged:
+            budget_nudged = True
+            messages.append({"role": "user", "content": _BUDGET_NUDGE})
 
         accumulator = MessageAccumulator()
         async for chunk in gateway.stream_chat(
@@ -219,16 +241,43 @@ async def _run_agent(
 
         messages.append(assistant_message(response.content, response.tool_calls))
         finished = False
+        step_changed = False
         for call in response.tool_calls:
             if await _is_cancelled(session, run):
                 raise RunCancelled
             outcome = await tools.execute(call.name, call.arguments)
             messages.append(tool_message(call.id, call.name, outcome.content))
+            if call.name == "write_file" and outcome.path:
+                write_counts[outcome.path] = write_counts.get(outcome.path, 0) + 1
+            step_changed = step_changed or outcome.changed
             if outcome.finished:
                 summary = outcome.summary or "本次生成已完成。"
                 finished = True
                 break
         if finished:
+            break
+
+        stalled_steps = 0 if step_changed else stalled_steps + 1
+        rewrote_too_much = any(count >= _WRITE_NUDGE_THRESHOLD for count in write_counts.values())
+        if not loop_nudged and (stalled_steps >= _STALL_NUDGE_AFTER or rewrote_too_much):
+            loop_nudged = True
+            messages.append({"role": "user", "content": _LOOP_NUDGE})
+            await emitter.emit("assistant.delta", {"text": "\n检测到重复修改，正在收敛结果…\n"})
+            continue
+        if loop_nudged and (
+            stalled_steps >= _MAX_STALLED_STEPS
+            or any(count >= _MAX_WRITES_PER_PATH for count in write_counts.values())
+        ):
+            logger.warning(
+                "agent.loop_breaker",
+                run_id=run.id,
+                stalled_steps=stalled_steps,
+                writes=write_counts,
+            )
+            summary = "已生成应用（检测到重复修改，已自动结束本次生成）。"
+            await emitter.emit(
+                "assistant.delta", {"text": "\n检测到重复修改，已自动结束本次生成。\n"}
+            )
             break
     else:
         raise AgentFailure("step_limit", f"超过最大工具步数 {settings.max_steps}，请缩小需求后重试")
