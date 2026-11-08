@@ -53,7 +53,7 @@ backend:   routes(HTTP) → services(business) → db / agent
 - 所有表结构变更必须通过 Alembic migration；禁止 `create_all`、禁止手改已应用的迁移。
 - 查询必须显式排序与限制数量；列表接口必须有分页或上限。
 - 统一错误结构：`{ code, message, request_id }`。
-- SSE 事件固定为：`run.status`、`assistant.delta`、`plan.updated`、`tool.start`、`file.updated`、`preview.ready`、`usage`、`error`。
+- SSE 事件固定为：`run.status`、`assistant.delta`、`plan.updated`、`tool.start`、`file.updated`、`preview.ready`、`usage`、`error`；工作区消息流额外使用 `message.intent`、`chat.done`，并复用 `assistant.delta` / `error`。
 - 新增/删除 SSE 事件类型，必须同时更新前端事件处理、后端类型与本文档。
 
 ## 6. 代码质量

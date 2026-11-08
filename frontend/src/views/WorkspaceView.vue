@@ -261,6 +261,7 @@ onBeforeUnmount(() => {
             :events="workspace.events"
             :status="workspace.runStatus"
             :active="workspace.active"
+            :replying="workspace.replying"
             :mode="workspace.mode"
             :usage="workspace.usage"
             :error="workspace.error"

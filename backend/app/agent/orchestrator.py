@@ -280,7 +280,7 @@ async def _run_demo(
 async def _history(session: AsyncSession, project_id: str) -> list[Message]:
     result = await session.execute(
         select(Message)
-        .where(Message.project_id == project_id)
+        .where(Message.project_id == project_id, Message.run_id.is_not(None))
         .order_by(Message.id.asc())
         .limit(200)
     )
