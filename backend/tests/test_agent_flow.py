@@ -136,6 +136,94 @@ class RewritingProvider:
         yield _write_turn(f"call-js-{self.calls}", "app.js", _JS)
 
 
+class PlanningProvider:
+    """Plans twice before writing; two plan-only steps are not a write loop."""
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    async def stream_chat(
+        self,
+        *,
+        messages: Sequence[dict[str, Any]],
+        tools: Sequence[dict[str, Any]],
+        max_tokens: int,
+    ) -> AsyncIterator[StreamChunk]:
+        self.calls += 1
+        if self.calls <= 2:
+            yield _plan_turn(f"call-plan-{self.calls}", first_done=self.calls == 2)
+        elif self.calls == 3:
+            yield _write_turn("call-html", "index.html", _HTML)
+        elif self.calls == 4:
+            yield _write_turn("call-css", "styles.css", _CSS)
+        elif self.calls == 5:
+            yield _write_turn("call-js", "app.js", _JS)
+        else:
+            yield _finish_turn("call-finish", "看板应用已生成")
+
+
+class EarlyFinishProvider:
+    """Calls finish before writing anything, then writes after being corrected."""
+
+    def __init__(self) -> None:
+        self.calls = 0
+        self.saw_missing_entry = False
+
+    async def stream_chat(
+        self,
+        *,
+        messages: Sequence[dict[str, Any]],
+        tools: Sequence[dict[str, Any]],
+        max_tokens: int,
+    ) -> AsyncIterator[StreamChunk]:
+        self.calls += 1
+        if any("index.html 尚未写入" in str(item["content"]) for item in messages):
+            self.saw_missing_entry = True
+        if self.calls == 1:
+            yield _finish_turn("call-finish-early", "生成完成")
+        elif self.calls == 2:
+            yield _write_turn("call-html", "index.html", _HTML)
+        elif self.calls == 3:
+            yield _write_turn("call-css", "styles.css", _CSS)
+        elif self.calls == 4:
+            yield _write_turn("call-js", "app.js", _JS)
+        else:
+            yield _finish_turn("call-finish", "看板应用已生成")
+
+
+def _plan_turn(call_id: str, *, first_done: bool) -> StreamChunk:
+    steps = [
+        {"title": "规划页面结构", "status": "done" if first_done else "in_progress"},
+        {"title": "编写 index.html", "status": "in_progress" if first_done else "pending"},
+        {"title": "编写样式与逻辑", "status": "pending"},
+    ]
+    return StreamChunk(
+        tool_calls=[
+            ToolCallDelta(
+                index=0,
+                id=call_id,
+                name="update_plan",
+                arguments=json.dumps({"steps": steps}, ensure_ascii=False),
+            )
+        ],
+        finish_reason="tool_calls",
+    )
+
+
+def _finish_turn(call_id: str, summary: str) -> StreamChunk:
+    return StreamChunk(
+        tool_calls=[
+            ToolCallDelta(
+                index=0,
+                id=call_id,
+                name="finish",
+                arguments=json.dumps({"summary": summary}, ensure_ascii=False),
+            )
+        ],
+        finish_reason="tool_calls",
+    )
+
+
 def _write_turn(call_id: str, path: str, content: str) -> StreamChunk:
     return StreamChunk(
         tool_calls=[
@@ -301,6 +389,90 @@ async def test_repeated_writes_are_finalized_instead_of_hitting_step_limit(
         async with SessionFactory() as session:
             await session.execute(delete(Guest).where(Guest.id == guest_id))
             await session.commit()
+
+
+async def _seed_run(prompt: str = "做一个任务看板") -> tuple[str, str, str]:
+    async with SessionFactory() as session:
+        _token, guest = await create_guest(session)
+        project = await create_project(session, guest.id, prompt, "测试看板")
+        user_message = Message(project_id=project.id, role="user", content=prompt)
+        session.add(user_message)
+        await session.flush()
+        run = Run(
+            id=new_ulid(),
+            project_id=project.id,
+            user_message_id=user_message.id,
+            status="queued",
+        )
+        session.add(run)
+        await session.commit()
+    return run.id, project.id, guest.id
+
+
+async def test_planning_steps_do_not_trigger_loop_guard(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    available, reason = await _database_available()
+    if not available:
+        pytest.skip(f"MySQL is not available; integration tests need the real database ({reason})")
+
+    run_id, project_id, guest_id = await _seed_run()
+    monkeypatch.setattr("app.agent.orchestrator.resolve_mode", lambda: "live")
+    provider = PlanningProvider()
+    await execute_run(run_id, gateway=LLMGateway(provider))
+
+    try:
+        async with SessionFactory() as session:
+            stored = await session.get(Run, run_id)
+            stored_project = await session.get(Project, project_id)
+            events = (
+                (await session.execute(select(RunEvent).where(RunEvent.run_id == run_id)))
+                .scalars()
+                .all()
+            )
+
+        assert stored is not None and stored.status == "succeeded"
+        assert stored_project is not None and stored_project.current_version == 1
+        assert provider.calls == 6
+        loop_deltas = [
+            event
+            for event in events
+            if event.type == "assistant.delta" and "重复修改" in str(event.payload.get("text", ""))
+        ]
+        assert loop_deltas == []
+    finally:
+        async with SessionFactory() as session:
+            await session.execute(delete(Guest).where(Guest.id == guest_id))
+            await session.commit()
+
+
+async def test_finish_without_entry_is_rejected(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    available, reason = await _database_available()
+    if not available:
+        pytest.skip(f"MySQL is not available; integration tests need the real database ({reason})")
+
+    run_id, project_id, guest_id = await _seed_run()
+    monkeypatch.setattr("app.agent.orchestrator.resolve_mode", lambda: "live")
+    provider = EarlyFinishProvider()
+    await execute_run(run_id, gateway=LLMGateway(provider))
+
+    try:
+        async with SessionFactory() as session:
+            stored = await session.get(Run, run_id)
+            stored_project = await session.get(Project, project_id)
+
+        assert stored is not None and stored.status == "succeeded"
+        assert stored_project is not None and stored_project.current_version == 1
+        assert provider.calls == 5
+        assert provider.saw_missing_entry is True
+    finally:
+        async with SessionFactory() as session:
+            await session.execute(delete(Guest).where(Guest.id == guest_id))
+            await session.commit()
+
+
 def test_finish_keeps_full_summary() -> None:
     summary = "已生成完整应用。" + "功能说明。" * 120
     assert len(summary) > 500

@@ -45,7 +45,12 @@ _WRITE_NUDGE_THRESHOLD = 4
 _MAX_WRITES_PER_PATH = 6
 _LOOP_NUDGE = (
     "已检测到重复修改：同一文件被多次完整覆盖，或连续多步没有产生新的文件变化。"
-    "当前文件内容已经可用，请停止重复写入，立即调用 finish 结束本次生成。"
+    "请停止重复写入；如果入口文件 index.html 尚未写入，请先写入它；"
+    "文件齐全后再调用 finish 结束本次生成。"
+)
+_MISSING_ENTRY_NUDGE = (
+    "入口文件 index.html 尚未写入或内容为空，不能结束本次生成。"
+    "请立即用 write_file 写入完整的 index.html，再调用 finish。"
 )
 _BUDGET_NUDGE = (
     "工具步数即将用完。请立即完成当前正在写的文件，"
@@ -241,23 +246,36 @@ async def _run_agent(
 
         messages.append(assistant_message(response.content, response.tool_calls))
         finished = False
+        step_mutated = False
         step_changed = False
         for call in response.tool_calls:
             if await _is_cancelled(session, run):
                 raise RunCancelled
             outcome = await tools.execute(call.name, call.arguments)
             messages.append(tool_message(call.id, call.name, outcome.content))
-            if call.name == "write_file" and outcome.path:
-                write_counts[outcome.path] = write_counts.get(outcome.path, 0) + 1
+            if outcome.path is not None:
+                step_mutated = True
+                if call.name == "write_file":
+                    write_counts[outcome.path] = write_counts.get(outcome.path, 0) + 1
             step_changed = step_changed or outcome.changed
             if outcome.finished:
-                summary = outcome.summary or "本次生成已完成。"
-                finished = True
+                if await _entry_ready(session, project):
+                    summary = outcome.summary or "本次生成已完成。"
+                    finished = True
+                else:
+                    messages.append({"role": "user", "content": _MISSING_ENTRY_NUDGE})
+                    await emitter.emit(
+                        "assistant.delta",
+                        {"text": "\n入口文件尚未写入，继续生成…\n"},
+                    )
                 break
         if finished:
             break
 
-        stalled_steps = 0 if step_changed else stalled_steps + 1
+        if step_mutated:
+            # Plan/read-only steps must not count toward the loop guard: a
+            # model that plans twice before writing is not "stuck".
+            stalled_steps = 0 if step_changed else stalled_steps + 1
         rewrote_too_much = any(count >= _WRITE_NUDGE_THRESHOLD for count in write_counts.values())
         if not loop_nudged and (stalled_steps >= _STALL_NUDGE_AFTER or rewrote_too_much):
             loop_nudged = True
@@ -268,6 +286,17 @@ async def _run_agent(
             stalled_steps >= _MAX_STALLED_STEPS
             or any(count >= _MAX_WRITES_PER_PATH for count in write_counts.values())
         ):
+            if not await _entry_ready(session, project):
+                # Never auto-finish before the entry file exists; otherwise the
+                # run fails validation with an unclear "missing index.html".
+                stalled_steps = 0
+                loop_nudged = False
+                messages.append({"role": "user", "content": _MISSING_ENTRY_NUDGE})
+                await emitter.emit(
+                    "assistant.delta",
+                    {"text": "\n入口文件尚未写入，继续生成…\n"},
+                )
+                continue
             logger.warning(
                 "agent.loop_breaker",
                 run_id=run.id,
@@ -346,6 +375,14 @@ async def _run_demo(
         "配置 LLM_API_KEY 后将切换到 DeepSeek 实时生成。"
     )
     return summary, 0, 0
+
+
+async def _entry_ready(session: AsyncSession, project: Project) -> bool:
+    entry = await vfs.get_file(session, project.id, project.entry_path)
+    ready = entry is not None and bool(entry.content.strip())
+    # Release the read transaction before the next model call.
+    await session.commit()
+    return ready
 
 
 async def _history(session: AsyncSession, project_id: str) -> list[Message]:
