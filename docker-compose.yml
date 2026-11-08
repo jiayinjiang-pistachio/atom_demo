@@ -79,6 +79,16 @@ services:
 
   caddy:
     image: caddy:2
+    command:
+      - caddy
+      - run
+      - --config
+      - /etc/caddy/Caddyfile
+      - --adapter
+      - caddyfile
+      # Watch the mounted config so route updates (e.g. /share-preview/*)
+      # apply without recreating the container.
+      - --watch
     depends_on:
       - web
       - api
@@ -90,7 +100,10 @@ services:
       PREVIEW_DOMAIN: ${PREVIEW_DOMAIN:-preview.localhost}
       ACME_EMAIL: ${ACME_EMAIL:-admin@example.com}
     volumes:
-      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      # Mount the whole directory, not the single file: `git pull` replaces
+      # Caddyfile with a new inode, and a file bind mount would keep serving
+      # the old content even after `caddy reload`.
+      - ./deploy:/etc/caddy:ro
       - caddy_data:/data
       - caddy_config:/config
     restart: unless-stopped
