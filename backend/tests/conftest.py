@@ -63,3 +63,9 @@ async def client() -> AsyncIterator[AsyncClient]:
 async def clear_dependency_overrides() -> AsyncIterator[None]:
     yield
     app.dependency_overrides.clear()
+
+
+@pytest.fixture(autouse=True)
+def disable_live_title_gateway(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep tests offline: project creation falls back to template titles by default."""
+    monkeypatch.setattr("app.services.titles.build_gateway", lambda: None)

@@ -17,13 +17,36 @@ class Template:
     files: dict[str, str]
 
 
-def pick_template(prompt: str) -> Template:
+_TITLES = {
+    "kanban": "团队任务看板",
+    "habit": "习惯打卡",
+    "portfolio": "个人作品集",
+    "landing": "创意原型",
+}
+
+
+def _pick_kind(prompt: str) -> str:
     lowered = prompt.lower()
     if any(word in lowered for word in ("看板", "任务", "待办", "todo", "task", "kanban")):
-        return _kanban(prompt)
+        return "kanban"
     if any(word in lowered for word in ("打卡", "习惯", "habit", "streak")):
-        return _habit(prompt)
+        return "habit"
     if any(word in lowered for word in ("作品集", "个人主页", "简历", "portfolio", "resume")):
+        return "portfolio"
+    return "landing"
+
+
+def pick_template_title(prompt: str) -> str:
+    return _TITLES[_pick_kind(prompt)]
+
+
+def pick_template(prompt: str) -> Template:
+    kind = _pick_kind(prompt)
+    if kind == "kanban":
+        return _kanban(prompt)
+    if kind == "habit":
+        return _habit(prompt)
+    if kind == "portfolio":
         return _portfolio(prompt)
     return _landing(prompt)
 
@@ -177,7 +200,7 @@ render()
 """
     return Template(
         key="kanban",
-        title="团队任务看板",
+        title=_TITLES["kanban"],
         files={
             "index.html": html_source,
             "styles.css": css_source,
@@ -306,7 +329,7 @@ render()
 """
     return Template(
         key="habit",
-        title="习惯打卡",
+        title=_TITLES["habit"],
         files={
             "index.html": html_source,
             "styles.css": css_source,
@@ -398,7 +421,7 @@ document.getElementById('hello').addEventListener('click', async (event) => {
 """
     return Template(
         key="portfolio",
-        title="个人作品集",
+        title=_TITLES["portfolio"],
         files={
             "index.html": html_source,
             "styles.css": css_source,
@@ -509,7 +532,7 @@ render()
 """
     return Template(
         key="landing",
-        title="创意原型",
+        title=_TITLES["landing"],
         files={
             "index.html": html_source,
             "styles.css": css_source,

@@ -4,13 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.errors import AppError
 from app.core.ids import new_ulid
 from app.db.models import Message, Project, ProjectFile
-
-
-def _default_title(prompt: str) -> str:
-    compact = " ".join(prompt.split())
-    if not compact:
-        return "未命名应用"
-    return compact[:60]
+from app.services import titles
 
 
 async def list_projects(session: AsyncSession, owner_id: str, limit: int) -> list[Project]:
@@ -26,10 +20,14 @@ async def list_projects(session: AsyncSession, owner_id: str, limit: int) -> lis
 async def create_project(
     session: AsyncSession, owner_id: str, prompt: str, title: str | None
 ) -> Project:
+    if not title:
+        # Release the auth read transaction before calling the title model.
+        await session.commit()
+        title = await titles.generate_title(prompt)
     project = Project(
         id=new_ulid(),
         owner_id=owner_id,
-        title=title or _default_title(prompt),
+        title=title,
         prompt=prompt,
         entry_path="index.html",
         status="idle",
