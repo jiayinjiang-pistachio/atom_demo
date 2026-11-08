@@ -30,6 +30,14 @@ from app.services.runs import RunEmitter
 settings = get_settings()
 logger = structlog.get_logger()
 
+_MAX_TRUNCATION_RETRIES = 2
+_TRUNCATION_NUDGE = (
+    "上一条输出因长度限制被截断。请缩小单次输出："
+    "把大文件拆成多个文件（如 index.html + styles.css + app.js），"
+    "单次 write_file 内容控制在约 6000 字符以内；先写骨架，再分步补充。"
+    "不要输出与工具调用无关的长文本。"
+)
+
 
 class RunCancelled(Exception):
     pass
@@ -172,6 +180,7 @@ async def _run_agent(
     summary = ""
     tokens_in = 0
     tokens_out = 0
+    truncation_retries = 0
 
     for _step in range(settings.max_steps):
         if await _is_cancelled(session, run):
@@ -189,7 +198,20 @@ async def _run_agent(
         tokens_out += response.usage.completion_tokens
 
         if response.finish_reason == "length":
-            raise AgentFailure("output_truncated", "模型输出被截断，请缩小单个文件后重试")
+            truncation_retries += 1
+            if truncation_retries > _MAX_TRUNCATION_RETRIES:
+                raise AgentFailure("output_truncated", "模型输出被截断，请缩小单个文件后重试")
+            logger.warning(
+                "agent.output_truncated",
+                run_id=run.id,
+                attempt=truncation_retries,
+            )
+            await emitter.emit(
+                "assistant.delta",
+                {"text": "\n输出过长，正在改用更小的文件重试…\n"},
+            )
+            messages.append({"role": "user", "content": _TRUNCATION_NUDGE})
+            continue
 
         if not response.tool_calls:
             summary = response.content.strip()

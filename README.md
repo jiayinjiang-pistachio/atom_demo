@@ -76,7 +76,7 @@ docker compose up -d
 1. 访客进入首页，前端自动获取 guest token（`Authorization: Bearer`，库里只存 SHA-256）。
 2. 工作区消息发往 `POST /api/v1/projects/{id}/messages/stream`，后端先做意图识别：`build` 创建 run（单项目同时只允许一个活跃 run），`chat` 只保存消息并流式回复。
 3. 前端按 `message.intent` 分流：build 订阅 `GET /api/v1/runs/{id}/events?after_seq=0`；chat 继续消费同一条消息流的 `assistant.delta` / `chat.done`。run SSE 事件为 `run.status`、`assistant.delta`、`plan.updated`、`tool.start`、`file.updated`、`preview.ready`、`usage`、`error`，断线可用 `Last-Event-ID` 续传。
-4. Agent 通过工具（`update_plan` / `write_file` / `read_file` / `list_files` / `delete_file` / `finish`）写入 MySQL 中的虚拟文件系统；校验入口与引用后生成不可变版本快照（保留最近 20 个）。
+4. Agent 通过工具（`update_plan` / `write_file` / `read_file` / `list_files` / `delete_file` / `finish`）写入 MySQL 中的虚拟文件系统；校验入口与引用后生成不可变版本快照（保留最近 20 个）。若单次输出被长度上限截断，Agent 会自动提示拆分为更小的文件并重试（最多 2 次），仍失败才终止本轮并给出明确错误。
 5. `preview.ready` 后前端在 `preview.` 域名下以 iframe sandbox 加载 `/preview/{projectId}/{version}/index.html`。
 
 ### 意图识别与普通对话

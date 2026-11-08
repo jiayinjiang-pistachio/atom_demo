@@ -285,12 +285,42 @@ describe('workspace store', () => {
 
     const handlers = latestRunHandlers()
     handlers.onEvent(runEvent('assistant.delta', { text: '临时流式内容' }))
+    handlers.onEvent(
+      runEvent('plan.updated', {
+        steps: [{ title: '写入文件', status: 'in_progress' }],
+      }),
+    )
     handlers.onEvent(runEvent('run.status', { status: 'succeeded' }))
 
     expect(store.runStatus).toBe('succeeded')
     expect(store.assistantText).toBe('')
     expect(store.active).toBe(false)
+    expect(store.plan.map((step) => step.status)).toEqual(['done'])
     expect(mocks.abortRun).toHaveBeenCalledTimes(1)
+  })
+
+  it('stops the plan spinner when a run fails', async () => {
+    store.init(project())
+    await store.start('做一个看板', 'project-1')
+    emitBuildIntent()
+
+    const handlers = latestRunHandlers()
+    handlers.onEvent(
+      runEvent('plan.updated', {
+        steps: [
+          { title: '规划页面', status: 'in_progress' },
+          { title: '写入文件', status: 'pending' },
+        ],
+      }),
+    )
+    handlers.onEvent(
+      runEvent('run.status', { status: 'failed', error: '模型输出被截断，请缩小单个文件后重试' }),
+    )
+
+    expect(store.runStatus).toBe('failed')
+    expect(store.error).toBe('模型输出被截断，请缩小单个文件后重试')
+    expect(store.plan.map((step) => step.status)).toEqual(['pending', 'pending'])
+    expect(store.active).toBe(false)
   })
 
   it('reset tears down both streams and clears state', async () => {

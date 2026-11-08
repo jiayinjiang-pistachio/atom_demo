@@ -236,6 +236,12 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       if (TERMINAL_STATUSES.includes(runStatus.value)) {
         closeStream?.()
         closeStream = null
+        const failed = runStatus.value === 'failed' || runStatus.value === 'cancelled'
+        plan.value = plan.value.map((step) =>
+          step.status === 'in_progress'
+            ? { ...step, status: failed ? ('pending' as const) : ('done' as const) }
+            : step,
+        )
         // The final assistant message is persisted; the quiet refresh below
         // replaces the transient streamed text with the stored message.
         assistantText.value = ''

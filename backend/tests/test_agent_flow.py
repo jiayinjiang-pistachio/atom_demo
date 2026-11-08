@@ -87,6 +87,31 @@ class ScriptedProvider:
             yield chunk
 
 
+class TruncatingProvider(ScriptedProvider):
+    def __init__(self) -> None:
+        super().__init__()
+        self.calls = 0
+        self.saw_nudge = False
+
+    async def stream_chat(
+        self,
+        *,
+        messages: Sequence[dict[str, Any]],
+        tools: Sequence[dict[str, Any]],
+        max_tokens: int,
+    ) -> AsyncIterator[StreamChunk]:
+        self.calls += 1
+        if any("上一条输出因长度限制被截断" in str(item["content"]) for item in messages):
+            self.saw_nudge = True
+        if self.calls == 1:
+            yield StreamChunk(content="尝试一次写完整页面", finish_reason="length")
+            return
+        async for chunk in super().stream_chat(
+            messages=messages, tools=tools, max_tokens=max_tokens
+        ):
+            yield chunk
+
+
 def _write_turn(call_id: str, path: str, content: str) -> StreamChunk:
     return StreamChunk(
         tool_calls=[
@@ -153,6 +178,50 @@ async def flow(monkeypatch: pytest.MonkeyPatch) -> AsyncIterator[FlowContext]:
     async with SessionFactory() as session:
         await session.execute(delete(Guest).where(Guest.id == guest.id))
         await session.commit()
+
+
+async def test_output_truncation_retries_with_smaller_files(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    available, reason = await _database_available()
+    if not available:
+        pytest.skip(f"MySQL is not available; integration tests need the real database ({reason})")
+
+    async with SessionFactory() as session:
+        _token, guest = await create_guest(session)
+        project = await create_project(session, guest.id, "做一个任务看板", "测试看板")
+        user_message = Message(project_id=project.id, role="user", content="做一个任务看板")
+        session.add(user_message)
+        await session.flush()
+        run = Run(
+            id=new_ulid(),
+            project_id=project.id,
+            user_message_id=user_message.id,
+            status="queued",
+        )
+        session.add(run)
+        await session.commit()
+        run_id = run.id
+        project_id = project.id
+        guest_id = guest.id
+
+    monkeypatch.setattr("app.agent.orchestrator.resolve_mode", lambda: "live")
+    provider = TruncatingProvider()
+    await execute_run(run_id, gateway=LLMGateway(provider))
+
+    try:
+        async with SessionFactory() as session:
+            stored = await session.get(Run, run_id)
+            stored_project = await session.get(Project, project_id)
+
+        assert provider.calls > 1
+        assert provider.saw_nudge is True
+        assert stored is not None and stored.status == "succeeded"
+        assert stored_project is not None and stored_project.current_version == 1
+    finally:
+        async with SessionFactory() as session:
+            await session.execute(delete(Guest).where(Guest.id == guest_id))
+            await session.commit()
 
 
 async def test_agent_flow_persists_files_and_version(flow: FlowContext) -> None:
