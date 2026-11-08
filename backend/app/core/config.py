@@ -11,7 +11,7 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    app_name: str = "Atom Demo API"
+    app_name: str = "Pistachio Atom API"
     version: str = "0.1.0"
     environment: str = "local"
     api_prefix: str = "/api/v1"

@@ -1,4 +1,4 @@
-# Atom Demo — 全局规则
+# Pistachio Atom — 全局规则
 
 > 本文件是项目的最高优先级规则，适用于所有目录、所有 AI 工具与所有贡献者。
 > 子目录规则（`frontend/CLAUDE.md`、`backend/CLAUDE.md`）不得与本文件冲突。

@@ -24,7 +24,7 @@ const isShare = computed(() => route.name === 'share' || route.name === 'share-a
             <Sparkles class="size-4" />
           </span>
           <span class="flex items-center gap-2 text-sm font-semibold tracking-tight sm:text-base">
-            Atom Demo
+            Pistachio Atom
             <span
               class="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-500 dark:bg-slate-800 dark:text-slate-400"
             >
@@ -51,8 +51,7 @@ const isShare = computed(() => route.name === 'share' || route.name === 'share-a
       <div
         class="mx-auto flex w-full max-w-6xl flex-col gap-2 px-6 text-xs text-slate-500 sm:flex-row sm:items-center sm:justify-between dark:text-slate-400"
       >
-        <span>Atom Demo · M3 版本、导出与只读分享</span>
-        <span>Vue 3 / FastAPI / MySQL · 方案见 docs/tech-plan.md</span>
+        <span>© 2026 jiayinjiang-pistachio · 保留所有权利</span>
       </div>
     </footer>
   </div>

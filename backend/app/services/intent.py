@@ -145,7 +145,7 @@ _APP_SUBJECTS_EN = re.compile(
 _QUESTION = re.compile(r"[?？]\s*$")
 _VISIBLE_TEXT = re.compile(r"[A-Za-z0-9\u4e00-\u9fff]")
 
-_INTENT_SYSTEM = """你是 Atom Demo 工作区的意图分类器。
+_INTENT_SYSTEM = """你是 Pistachio Atom 工作区的意图分类器。
 用户会发来一条消息，请判断它是想创建或修改 Web 应用，还是普通聊天。
 BUILD：要求创建、修改、修复、调整应用、页面、文件、样式、功能或交互。
 CHAT：问候、寒暄、闲聊、与当前应用无关的问题、询问助手身份或能力、单纯感谢或确认。

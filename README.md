@@ -1,6 +1,6 @@
-# Atom Demo
+# Pistachio Atom
 
-一个 Atom-like 的智能体建站 Demo：用一句话描述需求，由 Agent 逐个写入文件并实时预览生成的应用。
+一个智能体建站 Demo：用一句话描述需求，由 Agent 逐个写入文件并实时预览生成的应用。
 
 > 当前进度：**M3 版本、导出与只读分享**。已可创建项目、发起生成、查看 Agent 计划/工具/文件事件流，并在隔离预览域运行生成结果；支持版本列表、版本 diff、回滚为新版本、ZIP 导出与带有效期的只读分享链接。未配置 `LLM_API_KEY` 时自动进入演示模式（界面与事件会明确标注），不伪造真实模型输出。在线代码编辑按计划推迟，不计入本阶段范围。
 
@@ -107,7 +107,7 @@ docker compose up -d
 | DELETE | `/api/v1/projects/{id}/shares/{slug}` | 撤销分享（幂等） |
 | GET | `/api/v1/shares/{slug}` | 公开只读元数据（无效 / 撤销 / 过期统一 404） |
 
-分享页固定版本，预览走 `preview.` 域的 `/share-preview/{slug}/*`，响应 `Cache-Control: no-store`，撤销或到期立即失效。每个分享提供两种打开形式：`/s/{slug}` 为标准分享页（带 Atom Demo 外壳、标题与有效期信息），`/s/{slug}/app` 为纯净应用页（全屏直接展示生成的应用，无任何 Atom Demo 界面元素）。每个项目最多 10 个有效分享；版本裁剪时会保留仍被有效分享引用的旧版本。
+分享页固定版本，预览走 `preview.` 域的 `/share-preview/{slug}/*`，响应 `Cache-Control: no-store`，撤销或到期立即失效。每个分享提供两种打开形式：`/s/{slug}` 为标准分享页（带 Pistachio Atom 外壳、标题与有效期信息），`/s/{slug}/app` 为纯净应用页（全屏直接展示生成的应用，无任何 Pistachio Atom 界面元素）。每个项目最多 10 个有效分享；版本裁剪时会保留仍被有效分享引用的旧版本。
 
 LLM 模式由 `LLM_MODE` 控制：`auto`（默认，有 Key 用 DeepSeek，否则演示模板）、`live`（必须配置 Key）、`demo`（强制离线模板）。演示模式会在界面与事件中标注。
 

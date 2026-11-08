@@ -369,7 +369,7 @@ def _portfolio(prompt: str) -> Template:
   <p>如果你有产品想法或合作意向，欢迎随时联系。</p>
   <button id="hello">复制邮箱</button>
 </section>
-<footer>用一句话生成 · Atom Demo</footer>
+<footer>用一句话生成 · Pistachio Atom</footer>
 <script src="app.js"></script>
 </body>
 </html>
@@ -460,7 +460,7 @@ def _landing(prompt: str) -> Template:
   <form id="form"><input id="idea" maxlength="80" placeholder="例如：把每周复盘做成一张卡片"><button>添加想法</button></form>
   <ul id="items"></ul>
 </section>
-<footer>由 Atom Demo 生成</footer>
+<footer>由 Pistachio Atom 生成</footer>
 <script src="app.js"></script>
 </body>
 </html>

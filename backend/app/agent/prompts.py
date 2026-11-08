@@ -5,7 +5,7 @@ from app.db.models import Project, ProjectFile
 
 settings = get_settings()
 
-SYSTEM_PROMPT = """你是 Atom Demo 的前端建站 Agent。
+SYSTEM_PROMPT = """你是 Pistachio Atom 的前端建站 Agent。
 你的目标是把用户的一句话需求变成可直接运行的多文件 Web 应用。
 
 硬性约束：

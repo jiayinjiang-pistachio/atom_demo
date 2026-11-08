@@ -109,9 +109,5 @@ function useExample(): void {
     >
       {{ localError }}
     </p>
-
-    <p class="mt-3 text-xs text-slate-500 dark:text-slate-400">
-      M1 会持久化项目与提示词；DeepSeek 生成能力将在 M2 接入。
-    </p>
   </form>
 </template>

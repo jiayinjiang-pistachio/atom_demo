@@ -18,7 +18,7 @@ _ENTRY_LIMIT = 200
 _FILE_LIMIT = 12
 _MAX_OUTPUT_CHARS = 4000
 
-_OPTIMIZE_SYSTEM = """你是 Atom Demo 的提示词优化助手。
+_OPTIMIZE_SYSTEM = """你是 Pistachio Atom 的提示词优化助手。
 用户正在工作区中描述一个 Web 应用需求，但表达可能简短或模糊。
 请把它改写为更明确、可执行的中文需求，帮助生成 Agent 准确理解：
 - 保留用户的原始意图，不添加与需求无关的功能、页面或技术栈；

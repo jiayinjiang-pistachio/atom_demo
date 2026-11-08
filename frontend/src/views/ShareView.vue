@@ -48,7 +48,7 @@ onBeforeUnmount(() => shares.reset())
         <Sparkles class="size-4" />
       </span>
       <div>
-        <p class="text-sm font-semibold text-slate-900 dark:text-white">Atom Demo</p>
+        <p class="text-sm font-semibold text-slate-900 dark:text-white">Pistachio Atom</p>
         <p class="text-[11px] text-slate-500 dark:text-slate-400">只读分享</p>
       </div>
     </div>
@@ -107,7 +107,7 @@ onBeforeUnmount(() => shares.reset())
           to="/"
           class="text-xs font-medium text-slate-500 underline underline-offset-2 transition hover:text-slate-900 dark:hover:text-white"
         >
-          使用 Atom Demo 生成应用
+          使用 Pistachio Atom 生成应用
         </RouterLink>
       </header>
 

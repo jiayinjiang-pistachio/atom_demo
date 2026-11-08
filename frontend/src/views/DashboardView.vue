@@ -116,7 +116,7 @@ async function handleRemove(projectId: string): Promise<void> {
         </h1>
 
         <p class="mt-4 max-w-2xl text-sm leading-7 text-slate-600 sm:text-base dark:text-slate-400">
-          描述你的想法，Atom Demo 会持久化项目，由 DeepSeek 智能体逐步写入文件；计划、工具调用与文件变更通过 SSE 实时展示，成品在隔离域名中预览。
+          描述你的想法，Pistachio Atom 会持久化项目，由 DeepSeek 智能体逐步写入文件；计划、工具调用与文件变更通过 SSE 实时展示，成品在隔离域名中预览。
         </p>
 
         <div class="mt-8">
