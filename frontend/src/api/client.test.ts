@@ -3,6 +3,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   ApiError,
   buildApiUrl,
+  buildShareAppUrl,
+  buildSharePageUrl,
   buildSharePreviewUrl,
   filenameFromDisposition,
   getBlob,
@@ -52,6 +54,32 @@ describe('getJson', () => {
     const body = await getJson<{ status: string }>('/healthz', { acceptedStatuses: [503] })
 
     expect(body.status).toBe('degraded')
+  })
+})
+
+describe('buildSharePageUrl', () => {
+  it('builds the standard share page url', () => {
+    expect(buildSharePageUrl('slug-1', 'https://atom.example.com')).toBe(
+      'https://atom.example.com/s/slug-1',
+    )
+  })
+
+  it('encodes the slug', () => {
+    expect(buildSharePageUrl('abc/def', 'https://atom.example.com/')).toBe(
+      'https://atom.example.com/s/abc%2Fdef',
+    )
+  })
+})
+
+describe('buildShareAppUrl', () => {
+  it('builds the bare app url under the same share', () => {
+    expect(buildShareAppUrl('slug-1', 'https://atom.example.com')).toBe(
+      'https://atom.example.com/s/slug-1/app',
+    )
+  })
+
+  it('falls back to a relative url without an origin', () => {
+    expect(buildShareAppUrl('slug-1')).toBe('/s/slug-1/app')
   })
 })
 

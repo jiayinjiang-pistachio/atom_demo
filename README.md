@@ -105,7 +105,7 @@ docker compose up -d
 | DELETE | `/api/v1/projects/{id}/shares/{slug}` | 撤销分享（幂等） |
 | GET | `/api/v1/shares/{slug}` | 公开只读元数据（无效 / 撤销 / 过期统一 404） |
 
-分享页固定版本，预览走 `preview.` 域的 `/share-preview/{slug}/*`，响应 `Cache-Control: no-store`，撤销或到期立即失效。每个项目最多 10 个有效分享；版本裁剪时会保留仍被有效分享引用的旧版本。
+分享页固定版本，预览走 `preview.` 域的 `/share-preview/{slug}/*`，响应 `Cache-Control: no-store`，撤销或到期立即失效。每个分享提供两种打开形式：`/s/{slug}` 为标准分享页（带 Atom Demo 外壳、标题与有效期信息），`/s/{slug}/app` 为纯净应用页（全屏直接展示生成的应用，无任何 Atom Demo 界面元素）。每个项目最多 10 个有效分享；版本裁剪时会保留仍被有效分享引用的旧版本。
 
 LLM 模式由 `LLM_MODE` 控制：`auto`（默认，有 Key 用 DeepSeek，否则演示模板）、`live`（必须配置 Key）、`demo`（强制离线模板）。演示模式会在界面与事件中标注。
 

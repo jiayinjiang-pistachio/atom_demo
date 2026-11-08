@@ -30,6 +30,14 @@ export function buildPreviewUrl(
   return `${PREVIEW_ORIGIN}/preview/${projectId}/${version}/${path}`
 }
 
+export function buildSharePageUrl(slug: string, origin = ''): string {
+  return `${origin.replace(/\/$/, '')}/s/${encodeURIComponent(slug)}`
+}
+
+export function buildShareAppUrl(slug: string, origin = ''): string {
+  return `${buildSharePageUrl(slug, origin)}/app`
+}
+
 export function buildSharePreviewUrl(slug: string, path = 'index.html'): string {
   const safeSlug = encodeURIComponent(slug)
   const safePath = path

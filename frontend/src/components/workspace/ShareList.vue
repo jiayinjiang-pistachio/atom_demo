@@ -2,6 +2,7 @@
 import { Check, Copy, ExternalLink, LoaderCircle, Trash2 } from 'lucide-vue-next'
 import { ref, watch } from 'vue'
 
+import { buildShareAppUrl, buildSharePageUrl } from '@/api/client'
 import type { ShareSummary } from '@/api/types'
 
 const props = defineProps<{
@@ -15,8 +16,10 @@ const emit = defineEmits<{
   revoke: [slug: string]
 }>()
 
-const copiedSlug = ref<string | null>(null)
-const fallbackUrl = ref<string | null>(null)
+type ShareLinkKind = 'page' | 'app'
+
+const copiedKey = ref<string | null>(null)
+const fallback = ref<{ label: string; url: string } | null>(null)
 const revokingSlug = ref<string | null>(null)
 
 watch(
@@ -28,22 +31,27 @@ watch(
   },
 )
 
-function sharePageUrl(slug: string): string {
-  return `${window.location.origin}/s/${slug}`
+function linkUrl(slug: string, kind: ShareLinkKind): string {
+  const origin = typeof window === 'undefined' ? '' : window.location.origin
+  return kind === 'app' ? buildShareAppUrl(slug, origin) : buildSharePageUrl(slug, origin)
 }
 
-async function copyLink(slug: string): Promise<void> {
-  const url = sharePageUrl(slug)
-  fallbackUrl.value = null
+function isCopied(slug: string, kind: ShareLinkKind): boolean {
+  return copiedKey.value === `${slug}:${kind}`
+}
+
+async function copyLink(slug: string, kind: ShareLinkKind): Promise<void> {
+  const url = linkUrl(slug, kind)
+  fallback.value = null
   try {
     if (!navigator.clipboard) {
       throw new Error('clipboard unavailable')
     }
     await navigator.clipboard.writeText(url)
-    copiedSlug.value = slug
+    copiedKey.value = `${slug}:${kind}`
   } catch {
-    copiedSlug.value = null
-    fallbackUrl.value = url
+    copiedKey.value = null
+    fallback.value = { label: kind === 'app' ? '纯净页' : '分享页', url }
   }
 }
 
@@ -100,19 +108,20 @@ function expiryLabel(value: string | null): string {
             {{ expiryLabel(share.expires_at) }}
           </span>
         </div>
-        <div class="mt-2 flex items-center gap-1">
+        <div class="mt-2 flex flex-wrap items-center gap-x-1 gap-y-1">
+          <span class="text-[10px] font-medium text-slate-500 dark:text-slate-400">分享页</span>
           <button
             type="button"
             class="inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-[10px] font-medium text-slate-600 transition hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
-            :aria-label="`复制 /s/${share.slug} 链接`"
-            @click="copyLink(share.slug)"
+            :aria-label="`复制 /s/${share.slug} 分享页链接`"
+            @click="copyLink(share.slug, 'page')"
           >
-            <Check v-if="copiedSlug === share.slug" class="size-3 text-emerald-500" />
+            <Check v-if="isCopied(share.slug, 'page')" class="size-3 text-emerald-500" />
             <Copy v-else class="size-3" />
-            {{ copiedSlug === share.slug ? '已复制' : '复制链接' }}
+            {{ isCopied(share.slug, 'page') ? '已复制' : '复制' }}
           </button>
           <a
-            :href="sharePageUrl(share.slug)"
+            :href="linkUrl(share.slug, 'page')"
             target="_blank"
             rel="noopener noreferrer"
             class="inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-[10px] font-medium text-slate-600 transition hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
@@ -120,6 +129,30 @@ function expiryLabel(value: string | null): string {
             <ExternalLink class="size-3" />
             打开
           </a>
+
+          <span class="ml-1 text-[10px] font-medium text-slate-500 dark:text-slate-400">
+            纯净页
+          </span>
+          <button
+            type="button"
+            class="inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-[10px] font-medium text-slate-600 transition hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
+            :aria-label="`复制 /s/${share.slug}/app 纯净页链接`"
+            @click="copyLink(share.slug, 'app')"
+          >
+            <Check v-if="isCopied(share.slug, 'app')" class="size-3 text-emerald-500" />
+            <Copy v-else class="size-3" />
+            {{ isCopied(share.slug, 'app') ? '已复制' : '复制' }}
+          </button>
+          <a
+            :href="linkUrl(share.slug, 'app')"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-[10px] font-medium text-slate-600 transition hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
+          >
+            <ExternalLink class="size-3" />
+            打开
+          </a>
+
           <button
             type="button"
             class="ml-auto inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-[10px] font-medium text-rose-600 transition hover:bg-rose-50 disabled:opacity-50 dark:text-rose-400 dark:hover:bg-rose-500/10"
@@ -136,15 +169,15 @@ function expiryLabel(value: string | null): string {
     </ul>
 
     <div
-      v-if="fallbackUrl"
+      v-if="fallback"
       class="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-2 dark:border-amber-500/30 dark:bg-amber-500/10"
     >
       <p class="text-[10px] text-amber-700 dark:text-amber-300">
-        无法访问剪贴板，请手动复制链接：
+        无法访问剪贴板，请手动复制{{ fallback.label }}链接：
       </p>
       <input
         readonly
-        :value="fallbackUrl"
+        :value="fallback.url"
         class="mt-1 w-full rounded-md border border-amber-200 bg-white px-2 py-1 font-mono text-[11px] text-slate-700 dark:border-amber-500/30 dark:bg-slate-950/40 dark:text-slate-200"
       >
     </div>

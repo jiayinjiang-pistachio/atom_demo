@@ -123,7 +123,8 @@ onBeforeUnmount(() => {
 
         <div class="min-h-0 flex-1 overflow-y-auto px-5 py-4">
           <p class="text-xs leading-5 text-slate-500 dark:text-slate-400">
-            分享页固定在所选版本，访客无需登录即可查看；撤销或到期后立即失效。
+            分享固定在所选版本，访客无需登录即可查看。每个分享提供两种链接：
+            分享页（带 Atom Demo 外壳）与纯净页（全屏直接展示应用）；撤销或到期后立即失效。
           </p>
 
           <div class="mt-3 grid gap-2 sm:grid-cols-2">

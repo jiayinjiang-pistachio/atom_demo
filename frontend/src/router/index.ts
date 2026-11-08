@@ -19,6 +19,11 @@ const router = createRouter({
       component: () => import('@/views/ShareView.vue'),
     },
     {
+      path: '/s/:slug/app',
+      name: 'share-app',
+      component: () => import('@/views/ShareAppView.vue'),
+    },
+    {
       path: '/:pathMatch(.*)*',
       redirect: '/',
     },

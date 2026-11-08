@@ -7,7 +7,7 @@ import { useThemeStore } from '@/stores/theme'
 
 const route = useRoute()
 const themeStore = useThemeStore()
-const isShare = computed(() => route.name === 'share')
+const isShare = computed(() => route.name === 'share' || route.name === 'share-app')
 </script>
 
 <template>
