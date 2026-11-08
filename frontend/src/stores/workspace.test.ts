@@ -1,22 +1,31 @@
 import { createPinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import type { RunStreamHandlers } from '@/api/events'
-import type { ProjectDetail, RunStreamEvent } from '@/api/types'
+import type { StreamHandlers } from '@/api/events'
+import type { ProjectDetail, RunStreamEvent, RunSummary } from '@/api/types'
 
 const mocks = vi.hoisted(() => ({
-  handlers: [] as RunStreamHandlers[],
-  abort: vi.fn(),
+  runHandlers: [] as StreamHandlers[],
+  messageHandlers: [] as StreamHandlers[],
+  abortRun: vi.fn(),
+  abortMessage: vi.fn(),
   postJson: vi.fn(),
   ensure: vi.fn(async () => {}),
   loadProject: vi.fn<(_projectId: string, _quiet?: boolean) => Promise<void>>(async () => {}),
+  current: null as ProjectDetail | null,
 }))
 
 vi.mock('@/api/events', () => ({
-  openRunStream: vi.fn((_runId: string, handlers: RunStreamHandlers) => {
-    mocks.handlers.push(handlers)
-    return mocks.abort
+  openRunStream: vi.fn((_runId: string, handlers: StreamHandlers) => {
+    mocks.runHandlers.push(handlers)
+    return mocks.abortRun
   }),
+  openMessageStream: vi.fn(
+    (_projectId: string, _message: string, handlers: StreamHandlers) => {
+      mocks.messageHandlers.push(handlers)
+      return mocks.abortMessage
+    },
+  ),
 }))
 
 vi.mock('@/api/client', () => ({
@@ -35,7 +44,12 @@ vi.mock('@/stores/guest', () => ({
 }))
 
 vi.mock('@/stores/projects', () => ({
-  useProjectsStore: () => ({ loadProject: mocks.loadProject }),
+  useProjectsStore: () => ({
+    loadProject: mocks.loadProject,
+    get current() {
+      return mocks.current
+    },
+  }),
 }))
 
 import { useWorkspaceStore } from './workspace'
@@ -57,16 +71,51 @@ function project(overrides: Partial<ProjectDetail> = {}): ProjectDetail {
   }
 }
 
+function runSummary(overrides: Partial<RunSummary> = {}): RunSummary {
+  return {
+    id: 'run-1',
+    project_id: 'project-1',
+    status: 'queued',
+    model: 'deepseek-chat',
+    tokens_in: 0,
+    tokens_out: 0,
+    error_code: null,
+    error_message: null,
+    created_at: '2026-01-01T00:00:00Z',
+    started_at: null,
+    finished_at: null,
+    ...overrides,
+  }
+}
+
 function runEvent(type: string, data: Record<string, unknown> = {}): RunStreamEvent {
   return { seq: 1, type, data }
 }
 
-function latestHandlers(): RunStreamHandlers {
-  const handlers = mocks.handlers.at(-1)
+function latestRunHandlers(): StreamHandlers {
+  const handlers = mocks.runHandlers.at(-1)
   if (!handlers) {
-    throw new Error('stream was not subscribed')
+    throw new Error('run stream was not subscribed')
   }
   return handlers
+}
+
+function latestMessageHandlers(): StreamHandlers {
+  const handlers = mocks.messageHandlers.at(-1)
+  if (!handlers) {
+    throw new Error('message stream was not opened')
+  }
+  return handlers
+}
+
+function emitBuildIntent(run: RunSummary = runSummary()): void {
+  latestMessageHandlers().onEvent(
+    runEvent('message.intent', { kind: 'build', run, user_message_id: 1 }),
+  )
+}
+
+function tick(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 0))
 }
 
 describe('workspace store', () => {
@@ -75,24 +124,14 @@ describe('workspace store', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
     store = useWorkspaceStore()
-    mocks.handlers = []
-    mocks.abort.mockClear()
+    mocks.runHandlers = []
+    mocks.messageHandlers = []
+    mocks.abortRun.mockClear()
+    mocks.abortMessage.mockClear()
     mocks.ensure.mockClear()
     mocks.loadProject.mockClear()
     mocks.postJson.mockReset()
-    mocks.postJson.mockResolvedValue({
-      id: 'run-1',
-      project_id: 'project-1',
-      status: 'queued',
-      model: 'deepseek-chat',
-      tokens_in: 0,
-      tokens_out: 0,
-      error_code: null,
-      error_message: null,
-      created_at: '2026-01-01T00:00:00Z',
-      started_at: null,
-      finished_at: null,
-    })
+    mocks.current = null
   })
 
   afterEach(() => {
@@ -101,46 +140,24 @@ describe('workspace store', () => {
   })
 
   it('initializes from the project detail and reconnects an active run', () => {
-    const detail = project({
-      latest_run: {
-        id: 'run-1',
-        project_id: 'project-1',
-        status: 'running',
-        model: 'deepseek-chat',
-        tokens_in: 0,
-        tokens_out: 0,
-        error_code: null,
-        error_message: null,
-        created_at: '2026-01-01T00:00:00Z',
-        started_at: '2026-01-01T00:00:00Z',
-        finished_at: null,
-      },
-    })
+    const detail = project({ latest_run: runSummary({ status: 'running' }) })
 
     store.init(detail)
 
     expect(store.runStatus).toBe('running')
     expect(store.previewVersion).toBe(1)
     expect(store.active).toBe(true)
-    expect(mocks.handlers).toHaveLength(1)
+    expect(mocks.runHandlers).toHaveLength(1)
   })
 
   it('surfaces the last failure message on init', () => {
     store.init(
       project({
-        latest_run: {
-          id: 'run-2',
-          project_id: 'project-1',
+        latest_run: runSummary({
           status: 'failed',
-          model: 'deepseek-chat',
-          tokens_in: 0,
-          tokens_out: 0,
           error_code: 'llm_error',
           error_message: '模型暂时不可用',
-          created_at: '2026-01-01T00:00:00Z',
-          started_at: '2026-01-01T00:00:00Z',
-          finished_at: '2026-01-01T00:00:02Z',
-        },
+        }),
       }),
     )
 
@@ -148,11 +165,24 @@ describe('workspace store', () => {
     expect(store.error).toBe('模型暂时不可用')
   })
 
+  it('switches to the run stream when the intent is build', async () => {
+    store.init(project())
+    await store.start('做一个看板', 'project-1')
+    emitBuildIntent()
+
+    expect(store.replying).toBe(false)
+    expect(store.runStatus).toBe('queued')
+    expect(store.run?.id).toBe('run-1')
+    expect(mocks.runHandlers).toHaveLength(1)
+    expect(mocks.abortMessage).toHaveBeenCalledTimes(1)
+  })
+
   it('accumulates assistant deltas and applies plan updates', async () => {
     store.init(project())
     await store.start('做一个看板', 'project-1')
+    emitBuildIntent()
 
-    const handlers = latestHandlers()
+    const handlers = latestRunHandlers()
     handlers.onEvent(runEvent('assistant.delta', { text: '先规划，' }))
     handlers.onEvent(runEvent('assistant.delta', { text: '再写文件。' }))
     handlers.onEvent(
@@ -173,8 +203,9 @@ describe('workspace store', () => {
     vi.useFakeTimers()
     store.init(project())
     await store.start('做一个看板', 'project-1')
+    emitBuildIntent()
 
-    const handlers = latestHandlers()
+    const handlers = latestRunHandlers()
     handlers.onEvent(runEvent('preview.ready', { version: 2 }))
     handlers.onEvent(
       runEvent('usage', { mode: 'demo', tokens_in: 12, tokens_out: 34, duration_ms: 900 }),
@@ -188,40 +219,92 @@ describe('workspace store', () => {
     expect(mocks.loadProject).toHaveBeenCalledWith('project-1', true)
   })
 
-  it('closes the stream and clears transient text on a terminal status', async () => {
+  it('streams a chat reply without creating a run or version', async () => {
+    await store.start('你好', 'project-1')
+
+    const handlers = latestMessageHandlers()
+    handlers.onEvent(runEvent('message.intent', { kind: 'chat', run: null, user_message_id: 1 }))
+    handlers.onEvent(runEvent('assistant.delta', { text: '你好' }))
+    handlers.onEvent(runEvent('assistant.delta', { text: '呀' }))
+
+    expect(store.replying).toBe(true)
+    expect(store.runStatus).toBe('idle')
+    expect(store.assistantText).toBe('你好呀')
+    expect(mocks.runHandlers).toHaveLength(0)
+
+    mocks.current = project({
+      messages: [
+        {
+          id: 1,
+          role: 'user',
+          content: '你好',
+          run_id: null,
+          created_at: '2026-01-01T00:00:00Z',
+        },
+        {
+          id: 2,
+          role: 'assistant',
+          content: '你好呀',
+          run_id: null,
+          created_at: '2026-01-01T00:00:00Z',
+        },
+      ],
+    })
+    handlers.onEvent(runEvent('chat.done', { reply: '你好呀', assistant_message_id: 2 }))
+    await tick()
+
+    expect(store.replying).toBe(false)
+    expect(store.assistantText).toBe('')
+    expect(store.error).toBeNull()
+    expect(mocks.loadProject).toHaveBeenCalledWith('project-1', true)
+  })
+
+  it('reports a chat stream failure and clears the pending state', async () => {
+    await store.start('你好', 'project-1')
+    const handlers = latestMessageHandlers()
+
+    handlers.onEvent(runEvent('error', { message: '回复失败，请稍后重试' }))
+
+    expect(store.error).toBe('回复失败，请稍后重试')
+    expect(store.replying).toBe(false)
+  })
+
+  it('reports a dropped message stream', async () => {
+    await store.start('你好', 'project-1')
+
+    latestMessageHandlers().onClose?.()
+
+    expect(store.replying).toBe(false)
+    expect(store.error).toBe('对话连接已断开，请重试')
+  })
+
+  it('closes the run stream and clears transient text on a terminal status', async () => {
     store.init(project())
     await store.start('做一个看板', 'project-1')
+    emitBuildIntent()
 
-    const handlers = latestHandlers()
+    const handlers = latestRunHandlers()
     handlers.onEvent(runEvent('assistant.delta', { text: '临时流式内容' }))
     handlers.onEvent(runEvent('run.status', { status: 'succeeded' }))
 
     expect(store.runStatus).toBe('succeeded')
     expect(store.assistantText).toBe('')
     expect(store.active).toBe(false)
-    expect(mocks.abort).toHaveBeenCalledTimes(1)
+    expect(mocks.abortRun).toHaveBeenCalledTimes(1)
   })
 
-  it('reports a conflict when a run is already active', async () => {
-    const { ApiError } = await import('@/api/client')
-    mocks.postJson.mockRejectedValueOnce(new ApiError(409, 'conflict'))
-
-    await store.start('做一个看板', 'project-1')
-
-    expect(store.error).toBe('已有生成任务在进行中，请稍候')
-    expect(store.starting).toBe(false)
-    expect(store.runStatus).toBe('idle')
-  })
-
-  it('reset tears down the stream and clears state', async () => {
+  it('reset tears down both streams and clears state', async () => {
     store.init(project())
-    await store.start('做一个看板', 'project-1')
-    latestHandlers().onEvent(runEvent('run.status', { status: 'running' }))
+    await store.start('你好', 'project-1')
+    latestMessageHandlers().onEvent(
+      runEvent('message.intent', { kind: 'chat', run: null, user_message_id: 1 }),
+    )
     store.reset()
 
-    expect(mocks.abort).toHaveBeenCalled()
+    expect(mocks.abortMessage).toHaveBeenCalled()
     expect(store.runStatus).toBe('idle')
     expect(store.events).toHaveLength(0)
     expect(store.previewVersion).toBeNull()
+    expect(store.replying).toBe(false)
   })
 })

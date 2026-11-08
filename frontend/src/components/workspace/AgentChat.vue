@@ -22,6 +22,7 @@ const props = defineProps<{
   events: RunStreamEvent[]
   status: string
   active: boolean
+  replying: boolean
   mode: 'live' | 'demo' | null
   usage: { tokensIn: number; tokensOut: number; durationMs: number } | null
   error: string | null
@@ -47,9 +48,14 @@ const statusLabels: Record<string, string> = {
   failed: '生成失败',
   cancelled: '已取消',
 }
-const statusLabel = computed(() => statusLabels[props.status] ?? props.status)
+const statusLabel = computed(() =>
+  props.replying ? '回复中' : (statusLabels[props.status] ?? props.status),
+)
 
 const statusClass = computed(() => {
+  if (props.replying) {
+    return 'bg-indigo-50 text-indigo-700 dark:bg-indigo-500/10 dark:text-indigo-300'
+  }
   if (props.status === 'running' || props.status === 'queued') {
     return 'bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400'
   }
@@ -157,7 +163,10 @@ function entryDetail(event: RunStreamEvent): string {
       >
         演示模式
       </span>
-      <LoaderCircle v-if="active" class="size-3.5 animate-spin text-amber-500" />
+      <LoaderCircle
+        v-if="active || replying"
+        class="size-3.5 animate-spin text-amber-500"
+      />
       <button
         v-if="active"
         type="button"
@@ -270,7 +279,7 @@ function entryDetail(event: RunStreamEvent): string {
           :disabled="!canSend"
           maxlength="4000"
           class="max-h-28 min-w-0 flex-1 resize-none bg-transparent py-1 text-xs text-slate-700 outline-none placeholder:text-slate-400 disabled:opacity-60 dark:text-slate-200"
-          :placeholder="active ? '生成中，可等待或取消任务' : hasFiles ? '继续描述修改，例如：加一个负责人筛选' : '描述你要构建的应用'"
+          :placeholder="replying ? '正在回复，请稍候' : active ? '生成中，可等待或取消任务' : hasFiles ? '继续描述修改，例如：加一个负责人筛选' : '描述你要构建的应用'"
           @keydown="onKeydown"
         />
         <button

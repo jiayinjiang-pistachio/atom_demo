@@ -2,14 +2,8 @@ import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 
 import { ApiError, postJson } from '@/api/client'
-import { openRunStream } from '@/api/events'
-import type {
-  PlanStep,
-  ProjectDetail,
-  RunCreatePayload,
-  RunStreamEvent,
-  RunSummary,
-} from '@/api/types'
+import { openMessageStream, openRunStream } from '@/api/events'
+import type { PlanStep, ProjectDetail, RunStreamEvent, RunSummary } from '@/api/types'
 import { useGuestStore } from '@/stores/guest'
 import { useProjectsStore } from '@/stores/projects'
 
@@ -38,16 +32,17 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   const usage = ref<UsageInfo | null>(null)
   const previewVersion = ref<number | null>(null)
   const error = ref<string | null>(null)
-  const starting = ref(false)
+  const replying = ref(false)
 
   let closeStream: (() => void) | null = null
+  let closeMessageStream: (() => void) | null = null
   let refreshTimer: ReturnType<typeof setTimeout> | null = null
   let activeProjectId: string | null = null
 
   const active = computed(
-    () => runStatus.value === 'queued' || runStatus.value === 'running' || starting.value,
+    () => runStatus.value === 'queued' || runStatus.value === 'running',
   )
-  const canStart = computed(() => !active.value)
+  const canStart = computed(() => !active.value && !replying.value)
   const hasPreview = computed(() => previewVersion.value !== null)
 
   function init(project: ProjectDetail): void {
@@ -70,10 +65,9 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   }
 
   async function start(message: string, projectId: string): Promise<void> {
-    if (active.value) {
+    if (active.value || replying.value) {
       return
     }
-    starting.value = true
     error.value = null
     assistantText.value = ''
     plan.value = []
@@ -81,23 +75,81 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     mode.value = null
     usage.value = null
     activeProjectId = projectId
+    replying.value = true
     try {
       await guest.ensure()
-      const created = await postJson<RunSummary>(`/api/v1/projects/${projectId}/runs`, {
-        message,
-      } satisfies RunCreatePayload)
-      run.value = created
-      runStatus.value = created.status
-      subscribe(created.id, 0)
-      scheduleRefresh(0)
     } catch (caught) {
-      if (caught instanceof ApiError && caught.status === 409) {
-        error.value = '已有生成任务在进行中，请稍候'
-      } else {
-        error.value = caught instanceof Error ? caught.message : '无法启动生成任务'
+      error.value = caught instanceof Error ? caught.message : '无法建立访客身份'
+      replying.value = false
+      return
+    }
+    if (activeProjectId !== projectId) {
+      replying.value = false
+      return
+    }
+    closeMessageStream?.()
+    closeMessageStream = openMessageStream(projectId, message, {
+      onEvent: handleMessageEvent,
+      onError(message) {
+        error.value = message
+        replying.value = false
+      },
+      onClose() {
+        if (replying.value) {
+          replying.value = false
+          error.value = '对话连接已断开，请重试'
+        }
+      },
+    })
+  }
+
+  function handleMessageEvent(event: RunStreamEvent): void {
+    if (event.type === 'message.intent') {
+      if (String(event.data.kind ?? '') !== 'build') {
+        return
       }
-    } finally {
-      starting.value = false
+      const runData = event.data.run
+      if (runData && typeof runData === 'object') {
+        const created = runData as RunSummary
+        run.value = created
+        runStatus.value = created.status
+        subscribe(created.id, 0)
+        scheduleRefresh(0)
+      } else {
+        error.value = '生成任务创建失败，请重试'
+      }
+      closeMessageStream?.()
+      closeMessageStream = null
+      replying.value = false
+      return
+    }
+    if (event.type === 'assistant.delta') {
+      assistantText.value += String(event.data.text ?? '')
+      return
+    }
+    if (event.type === 'chat.done') {
+      closeMessageStream?.()
+      closeMessageStream = null
+      replying.value = false
+      void finishChat(String(event.data.reply ?? ''))
+      return
+    }
+    if (event.type === 'error') {
+      closeMessageStream?.()
+      closeMessageStream = null
+      replying.value = false
+      error.value = String(event.data.message ?? '对话失败，请重试')
+    }
+  }
+
+  async function finishChat(reply: string): Promise<void> {
+    if (!activeProjectId) {
+      return
+    }
+    await projects.loadProject(activeProjectId, true)
+    const last = projects.current?.messages.at(-1)
+    if (last?.role === 'assistant' && last.content.trim() === reply.trim()) {
+      assistantText.value = ''
     }
   }
 
@@ -211,6 +263,8 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   function reset(): void {
     closeStream?.()
     closeStream = null
+    closeMessageStream?.()
+    closeMessageStream = null
     if (refreshTimer !== null) {
       globalThis.clearTimeout(refreshTimer)
       refreshTimer = null
@@ -225,7 +279,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     usage.value = null
     previewVersion.value = null
     error.value = null
-    starting.value = false
+    replying.value = false
   }
 
   return {
@@ -238,7 +292,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     usage,
     previewVersion,
     error,
-    starting,
+    replying,
     active,
     canStart,
     hasPreview,
