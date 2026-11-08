@@ -30,6 +30,15 @@ export function buildPreviewUrl(
   return `${PREVIEW_ORIGIN}/preview/${projectId}/${version}/${path}`
 }
 
+export function buildSharePreviewUrl(slug: string, path = 'index.html'): string {
+  const safeSlug = encodeURIComponent(slug)
+  const safePath = path
+    .split('/')
+    .map((segment) => encodeURIComponent(segment))
+    .join('/')
+  return `${PREVIEW_ORIGIN}/share-preview/${safeSlug}/${safePath}`
+}
+
 export function readGuestToken(): string | null {
   if (typeof window === 'undefined') {
     return null
@@ -105,6 +114,58 @@ export function patchJson<T>(path: string, body: unknown): Promise<T> {
 
 export function deleteJson(path: string): Promise<void> {
   return request<void>(path, { method: 'DELETE' })
+}
+
+export interface BlobResponse {
+  blob: Blob
+  filename: string | null
+}
+
+export async function getBlob(path: string): Promise<BlobResponse> {
+  const headers = new Headers()
+  headers.set('Accept', 'application/zip, application/octet-stream')
+  const token = readGuestToken()
+  if (token) {
+    headers.set('Authorization', `Bearer ${token}`)
+  }
+
+  const response = await fetch(buildApiUrl(path), { headers })
+  if (!response.ok) {
+    const payload = await readErrorPayload(response)
+    throw new ApiError(
+      response.status,
+      payload.message,
+      response.headers.get('X-Request-ID') ?? undefined,
+    )
+  }
+
+  return {
+    blob: await response.blob(),
+    filename: filenameFromDisposition(response.headers.get('Content-Disposition')),
+  }
+}
+
+export function filenameFromDisposition(disposition: string | null): string | null {
+  if (!disposition) {
+    return null
+  }
+  const match = /filename="?([^";]+)"?/i.exec(disposition)
+  return match?.[1]?.trim() ?? null
+}
+
+export function downloadFile(blob: Blob, filename: string | null): void {
+  if (typeof document === 'undefined') {
+    return
+  }
+  const link = document.createElement('a')
+  const url = URL.createObjectURL(blob)
+  link.href = url
+  link.download = filename ?? 'download'
+  link.rel = 'noopener'
+  document.body.append(link)
+  link.click()
+  link.remove()
+  URL.revokeObjectURL(url)
 }
 
 async function readErrorPayload(response: Response): Promise<{ message: string }> {

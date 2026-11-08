@@ -49,7 +49,7 @@ const milestones = [
   { label: 'M0 · 运行时骨架', done: true },
   { label: 'M1 · 匿名身份与项目管理', done: true },
   { label: 'M2 · DeepSeek 生成闭环', done: true },
-  { label: 'M3 · 版本、分享与导出', done: false },
+  { label: 'M3 · 版本、分享与导出', done: true },
 ] as const
 
 onMounted(() => {
@@ -101,7 +101,7 @@ async function handleRemove(projectId: string): Promise<void> {
           class="inline-flex items-center gap-1.5 rounded-full border border-indigo-200 bg-indigo-50 px-3 py-1 text-xs font-medium text-indigo-700 dark:border-indigo-500/30 dark:bg-indigo-500/10 dark:text-indigo-300"
         >
           <Sparkles class="size-3.5" />
-          M2 · DeepSeek 生成闭环与实时预览已接入
+          M3 · 版本回滚、导出与只读分享已接入
         </span>
 
         <h1
