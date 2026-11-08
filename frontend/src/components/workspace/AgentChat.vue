@@ -3,17 +3,16 @@ import {
   AlertTriangle,
   CheckCircle2,
   Circle,
-  FilePlus2,
   LoaderCircle,
   MessageSquareText,
-  Send,
   Sparkles,
   Square,
-  Wrench,
 } from 'lucide-vue-next'
 import { computed, nextTick, ref, watch } from 'vue'
 
 import type { PlanStep, ProjectMessage, RunStreamEvent } from '@/api/types'
+import ChatActivityList from '@/components/workspace/ChatActivityList.vue'
+import ChatComposer from '@/components/workspace/ChatComposer.vue'
 
 const props = defineProps<{
   messages: ProjectMessage[]
@@ -29,6 +28,7 @@ const props = defineProps<{
   initialPrompt: string
   canSend: boolean
   hasFiles: boolean
+  projectId: string
 }>()
 
 const emit = defineEmits<{
@@ -37,7 +37,6 @@ const emit = defineEmits<{
   start: []
 }>()
 
-const draft = ref('')
 const scrollArea = ref<HTMLElement | null>(null)
 
 const statusLabels: Record<string, string> = {
@@ -68,31 +67,9 @@ const statusClass = computed(() => {
   return 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300'
 })
 
-const toolEntries = computed(() =>
-  props.events
-    .filter((event) => event.type === 'tool.start' || event.type === 'file.updated')
-    .slice(-12),
-)
-
 const showStartButton = computed(
   () => props.messages.length === 0 && !props.hasFiles && !props.active,
 )
-
-function submit(): void {
-  const message = draft.value.trim()
-  if (!message || !props.canSend) {
-    return
-  }
-  draft.value = ''
-  emit('send', message)
-}
-
-function onKeydown(event: KeyboardEvent): void {
-  if (event.key === 'Enter' && !event.shiftKey) {
-    event.preventDefault()
-    submit()
-  }
-}
 
 async function scrollToBottom(): Promise<void> {
   await nextTick()
@@ -106,45 +83,7 @@ watch(
   () => void scrollToBottom(),
 )
 
-watch(
-  () => props.initialPrompt,
-  (value) => {
-    if (!draft.value) {
-      draft.value = value
-    }
-  },
-  { immediate: true },
-)
 
-function entryTitle(event: RunStreamEvent): string {
-  if (event.type === 'file.updated') {
-    return String(event.data.path ?? '')
-  }
-  return String(event.data.name ?? 'tool')
-}
-
-function entryDetail(event: RunStreamEvent): string {
-  if (event.type === 'file.updated') {
-    if (event.data.deleted) {
-      return '已删除'
-    }
-    return `${event.data.size ?? 0} bytes`
-  }
-  const args = event.data.arguments as Record<string, unknown> | undefined
-  if (!args) {
-    return ''
-  }
-  if (typeof args.path === 'string') {
-    return args.path
-  }
-  if (typeof args.size === 'number') {
-    return `${args.size} bytes`
-  }
-  if (typeof args.steps === 'number') {
-    return `${args.steps} 步`
-  }
-  return ''
-}
 </script>
 
 <template>
@@ -239,18 +178,7 @@ function entryDetail(event: RunStreamEvent): string {
         </ul>
       </div>
 
-      <div v-if="toolEntries.length > 0" class="space-y-1">
-        <div
-          v-for="event in toolEntries"
-          :key="`${event.seq}-${event.type}`"
-          class="flex items-center gap-2 rounded-lg bg-slate-50 px-2.5 py-1.5 text-[11px] text-slate-500 dark:bg-slate-950/40 dark:text-slate-400"
-        >
-          <FilePlus2 v-if="event.type === 'file.updated'" class="size-3.5 text-indigo-500" />
-          <Wrench v-else class="size-3.5 text-slate-400" />
-          <span class="font-mono">{{ entryTitle(event) }}</span>
-          <span class="ml-auto truncate text-slate-400">{{ entryDetail(event) }}</span>
-        </div>
-      </div>
+      <ChatActivityList :events="events" />
 
       <div
         v-if="usage"
@@ -269,32 +197,14 @@ function entryDetail(event: RunStreamEvent): string {
       </div>
     </div>
 
-    <div class="border-t border-slate-100 p-3 dark:border-slate-800">
-      <div
-        class="flex items-end gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 transition focus-within:border-indigo-400 dark:border-slate-800 dark:bg-slate-950/40"
-      >
-        <textarea
-          v-model="draft"
-          rows="1"
-          :disabled="!canSend"
-          maxlength="4000"
-          class="max-h-28 min-w-0 flex-1 resize-none bg-transparent py-1 text-xs text-slate-700 outline-none placeholder:text-slate-400 disabled:opacity-60 dark:text-slate-200"
-          :placeholder="replying ? '正在回复，请稍候' : active ? '生成中，可等待或取消任务' : hasFiles ? '继续描述修改，例如：加一个负责人筛选' : '描述你要构建的应用'"
-          @keydown="onKeydown"
-        />
-        <button
-          type="button"
-          :disabled="!canSend || draft.trim().length === 0"
-          class="grid size-8 shrink-0 place-items-center rounded-lg bg-indigo-600 text-white transition hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-40"
-          aria-label="发送消息"
-          @click="submit"
-        >
-          <Send class="size-3.5" />
-        </button>
-      </div>
-      <p class="mt-2 text-[10px] text-slate-400">
-        Enter 发送 · Shift+Enter 换行 · 生成过程通过 SSE 实时展示
-      </p>
-    </div>
+    <ChatComposer
+      :initial-prompt="initialPrompt"
+      :can-send="canSend"
+      :replying="replying"
+      :active="active"
+      :has-files="hasFiles"
+      :project-id="projectId"
+      @send="emit('send', $event)"
+    />
   </section>
 </template>

@@ -268,6 +268,7 @@ onBeforeUnmount(() => {
             :initial-prompt="project.prompt"
             :can-send="workspace.canStart"
             :has-files="project.files.length > 0"
+            :project-id="project.id"
             @start="handleStart"
             @send="handleSend"
             @cancel="workspace.cancel()"

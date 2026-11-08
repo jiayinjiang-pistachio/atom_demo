@@ -141,3 +141,8 @@ export interface PublicShare {
   created_at: string
   expires_at: string | null
 }
+
+export interface PromptOptimizeResult {
+  original: string
+  optimized: string
+}
