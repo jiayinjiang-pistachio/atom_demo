@@ -36,8 +36,7 @@ function submit(): void {
 }
 
 function useExample(): void {
-  prompt.value =
-    '做一个支持拖拽的团队任务看板，可以按负责人筛选，并把筛选条件保存在浏览器里。'
+  prompt.value = '实现一个番茄闹钟应用'
 }
 </script>
 
@@ -70,7 +69,7 @@ function useExample(): void {
       :disabled="loading || disabled"
       maxlength="4000"
       class="mt-2 w-full resize-none rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-700 placeholder:text-slate-400 focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 disabled:cursor-not-allowed disabled:opacity-70 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200 dark:placeholder:text-slate-500"
-      placeholder="例如：做一个支持拖拽的团队任务看板，可以按负责人筛选，并记住当前筛选条件。"
+      placeholder="例如：实现一个番茄闹钟应用"
     />
 
     <div class="mt-3 grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end">
