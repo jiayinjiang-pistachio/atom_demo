@@ -52,6 +52,17 @@ const isShare = computed(() => route.name === 'share' || route.name === 'share-a
         class="mx-auto flex w-full max-w-6xl flex-col gap-2 px-6 text-xs text-slate-500 sm:flex-row sm:items-center sm:justify-between dark:text-slate-400"
       >
         <span>© 2026 jiayinjiang-pistachio · 保留所有权利</span>
+        <span>
+          参考：
+          <a
+            href="https://atoms.dev/"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="underline decoration-slate-300 underline-offset-2 transition hover:text-slate-700 dark:decoration-slate-700 dark:hover:text-slate-200"
+          >
+            Atom
+          </a>
+        </span>
       </div>
     </footer>
   </div>
